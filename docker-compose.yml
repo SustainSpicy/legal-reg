@@ -1,0 +1,46 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - PORT=3000
+      - NODE_ENV=${NODE_ENV:-development}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Run once to pre-seed Redis with smoke-test fixtures.
+  # Usage: docker compose run --rm seed
+  seed:
+    build: .
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
+    command: ["node", "dist/scripts/seed-smoke-tests.js"]
+    # actual compiled path is dist/scripts/seed-smoke-tests.js — correct
+    depends_on:
+      redis:
+        condition: service_healthy
+    profiles:
+      - seed
+
+volumes:
+  redis_data:

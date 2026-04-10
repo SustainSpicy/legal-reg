@@ -1,0 +1,44 @@
+{
+  "name": "corpsignal-mcp",
+  "version": "1.0.0",
+  "description": "Entity compliance MCP server — KYB, sanctions screening, and risk scoring for US/UK/Canada",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/src/index.js",
+    "dev": "nodemon --exec 'ts-node --esm' src/index.ts",
+    "seed": "node --loader ts-node/esm scripts/seed-smoke-tests.ts",
+    "seed:docker": "node dist/scripts/seed-smoke-tests.js",
+    "start:compiled": "node dist/src/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "mcp",
+    "kyb",
+    "sanctions",
+    "compliance",
+    "entity"
+  ],
+  "author": "",
+  "license": "MIT",
+  "description_unused": "",
+  "dependencies": {
+    "@ctxprotocol/sdk": "^0.10.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "express": "^5.2.1",
+    "node-cron": "^4.2.1",
+    "playwright": "^1.59.1",
+    "redis": "^5.11.0",
+    "zod": "^4.3.6",
+    "zod-to-json-schema": "^3.25.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.5.0",
+    "@types/node-cron": "^3.0.11",
+    "nodemon": "^3.1.14",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.2"
+  }
+}

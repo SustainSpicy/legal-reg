@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(npx playwright:*)",
+      "Bash(grep -l \"registerTool\" /c/Users/johns/Documents/Projects/legal-reg/src/tools/*.ts)",
+      "Bash(grep \"^  ''US-\\\\|^  ''CA-\\\\|^  ''GB''\" /c/Users/johns/Documents/Projects/legal-reg/src/resolvers/entity-resolver.ts)",
+      "Bash(docker compose:*)",
+      "Bash(Start-Process \"C:\\\\Program Files\\\\Docker\\\\Docker\\\\Docker Desktop.exe\")",
+      "Bash(powershell -Command ':*)",
+      "Bash(docker info:*)",
+      "Bash(docker context:*)",
+      "Bash(docker run:*)",
+      "Bash(curl -sI \"https://sanctionslistservice.ofac.treas.gov/api/publicationpreview/exports/consolidated.xml\")",
+      "Bash(curl -sI https://bizfileonline.sos.ca.gov/api/Records/businesssearch -H 'Content-Type: application/json' -H 'User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/124.0.0.0 Safari/537.36' -H 'Origin: https://bizfileonline.sos.ca.gov' -H 'Referer: https://bizfileonline.sos.ca.gov/search/business')",
+      "Bash(curl -s https://icis.corp.delaware.gov/Ecorp/EntitySearch/NameSearch.aspx -H 'User-Agent: CorpSignal-MCP/1.0')",
+      "Bash(curl -sI \"https://search.sunbiz.org/Inquiry/CorporationSearch/SearchResults?SearchTerm=Walt+Disney&SearchType=EntityName&SearchNameOrder=BEGINS\" -H \"Accept: application/json\" -H \"User-Agent: CorpSignal-MCP/1.0\")",
+      "Bash(curl -sI \"https://ccfs.sos.wa.gov/api/Search/EntitySearch?name=Amazon&take=5&skip=0\" -H \"Accept: application/json\")"
+    ]
+  }
+}
