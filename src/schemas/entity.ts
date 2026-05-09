@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ErrorOutputSchema } from '../errors/codes.js';
 
 export const EntityLookupInput = z.object({
   entity_name: z
@@ -27,7 +28,7 @@ export const RegisteredAgentSchema = z.object({
   address: z.string(),
 }).nullable();
 
-export const EntityLookupOutput = z.object({
+export const EntityLookupSuccessSchema = z.object({
   entity_id: z.string().describe('Canonical corpsig_ prefixed entity ID'),
   canonical_name: z.string(),
   jurisdiction: z.string(),
@@ -42,5 +43,7 @@ export const EntityLookupOutput = z.object({
   data_freshness: z.enum(['fresh', 'stale']).default('fresh'),
 });
 
+export const EntityLookupOutput = z.union([EntityLookupSuccessSchema, ErrorOutputSchema]);
+
 export type EntityLookupInputType = z.infer<typeof EntityLookupInput>;
-export type EntityLookupOutputType = z.infer<typeof EntityLookupOutput>;
+export type EntityLookupOutputType = z.infer<typeof EntityLookupSuccessSchema>;

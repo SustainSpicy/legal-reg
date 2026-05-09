@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ErrorOutputSchema } from '../errors/codes.js';
 
 export const SANCTIONS_LISTS = [
   'OFAC_SDN',
@@ -49,7 +50,7 @@ export const FuzzyCandidateSchema = z.object({
   disposition: z.literal('no_match'),
 });
 
-export const SanctionsScreenOutput = z.object({
+export const SanctionsScreenSuccessSchema = z.object({
   entity_name: z.string(),
   screened_at: z.string().describe('ISO 8601 timestamp'),
   clear: z.boolean().describe('True if no confirmed hits on any list'),
@@ -62,5 +63,7 @@ export const SanctionsScreenOutput = z.object({
   data_freshness: z.enum(['fresh', 'stale']).default('fresh'),
 });
 
+export const SanctionsScreenOutput = z.union([SanctionsScreenSuccessSchema, ErrorOutputSchema]);
+
 export type SanctionsScreenInputType = z.infer<typeof SanctionsScreenInput>;
-export type SanctionsScreenOutputType = z.infer<typeof SanctionsScreenOutput>;
+export type SanctionsScreenOutputType = z.infer<typeof SanctionsScreenSuccessSchema>;

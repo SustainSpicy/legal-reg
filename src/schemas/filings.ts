@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ErrorOutputSchema } from '../errors/codes.js';
 
 export const FilingsFetchInput = z.object({
   entity_id: z
@@ -51,7 +52,7 @@ export const FinancialsSchema = z.object({
   currency_original: z.string().nullable(),
 }).nullable();
 
-export const FilingsFetchOutput = z.object({
+export const FilingsFetchSuccessSchema = z.object({
   entity_id: z.string(),
   canonical_name: z.string(),
   jurisdiction: z.string(),
@@ -63,6 +64,8 @@ export const FilingsFetchOutput = z.object({
   data_freshness: z.enum(['fresh', 'stale']).default('fresh'),
 });
 
+export const FilingsFetchOutput = z.union([FilingsFetchSuccessSchema, ErrorOutputSchema]);
+
 export type FilingsFetchInputType = z.infer<typeof FilingsFetchInput>;
-export type FilingsFetchOutputType = z.infer<typeof FilingsFetchOutput>;
+export type FilingsFetchOutputType = z.infer<typeof FilingsFetchSuccessSchema>;
 export type FilingItemType = z.infer<typeof FilingItemSchema>;

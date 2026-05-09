@@ -1,3 +1,16 @@
+import { z } from 'zod';
+
+export const ErrorOutputSchema = z.object({
+  error: z.object({
+    code: z.string(),
+    message: z.string(),
+    retryable: z.boolean(),
+    fallback_used: z.boolean(),
+  }),
+});
+
+export type ErrorOutputType = z.infer<typeof ErrorOutputSchema>;
+
 export const ERROR_CODES = {
   ENTITY_NOT_FOUND: { retryable: false, http: 404 },
   UPSTREAM_UNAVAILABLE: { retryable: true, http: 200 }, // 200 + stale flag
@@ -26,13 +39,12 @@ export function structuredError(
     },
     ...partialData,
   };
+  const structuredPayload: ErrorOutputType = {
+    error: { code, message, retryable, fallback_used: !!partialData },
+  };
   return {
     isError: true,
-    content: [
-      {
-        type: 'text' as const,
-        text: JSON.stringify(errorPayload),
-      },
-    ],
+    content: [{ type: 'text' as const, text: JSON.stringify(errorPayload) }],
+    structuredContent: structuredPayload,
   };
 }

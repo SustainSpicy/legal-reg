@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ErrorOutputSchema } from '../errors/codes.js';
 
 export const ComplianceRiskInput = z.object({
   entity_name: z
@@ -24,7 +25,7 @@ export const ScoreSignalSchema = z.object({
   source: z.string().describe('Data source for this signal'),
 });
 
-export const ComplianceRiskOutput = z.object({
+export const ComplianceRiskSuccessSchema = z.object({
   entity_id: z.string(),
   canonical_name: z.string(),
   jurisdiction: z.string(),
@@ -45,5 +46,7 @@ export const ComplianceRiskOutput = z.object({
   data_freshness: z.enum(['fresh', 'stale']).default('fresh'),
 });
 
+export const ComplianceRiskOutput = z.union([ComplianceRiskSuccessSchema, ErrorOutputSchema]);
+
 export type ComplianceRiskInputType = z.infer<typeof ComplianceRiskInput>;
-export type ComplianceRiskOutputType = z.infer<typeof ComplianceRiskOutput>;
+export type ComplianceRiskOutputType = z.infer<typeof ComplianceRiskSuccessSchema>;

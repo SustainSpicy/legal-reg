@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ErrorOutputSchema } from '../errors/codes.js';
 
 export const BeneficialOwnersInput = z.object({
   entity_name: z
@@ -33,7 +34,7 @@ export const BeneficialOwnerSchema = z.object({
   notified_on: z.string().nullable(),
 });
 
-export const BeneficialOwnersOutput = z.object({
+export const BeneficialOwnersSuccessSchema = z.object({
   entity_id: z.string(),
   canonical_name: z.string(),
   jurisdiction: z.string(),
@@ -49,5 +50,7 @@ export const BeneficialOwnersOutput = z.object({
   data_freshness: z.enum(['fresh', 'stale']).default('fresh'),
 });
 
+export const BeneficialOwnersOutput = z.union([BeneficialOwnersSuccessSchema, ErrorOutputSchema]);
+
 export type BeneficialOwnersInputType = z.infer<typeof BeneficialOwnersInput>;
-export type BeneficialOwnersOutputType = z.infer<typeof BeneficialOwnersOutput>;
+export type BeneficialOwnersOutputType = z.infer<typeof BeneficialOwnersSuccessSchema>;
