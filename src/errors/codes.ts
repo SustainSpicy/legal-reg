@@ -34,6 +34,5 @@ export function structuredError(
         text: JSON.stringify(errorPayload),
       },
     ],
-    structuredContent: errorPayload,
   };
 }
