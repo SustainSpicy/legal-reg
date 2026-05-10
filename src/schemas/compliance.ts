@@ -5,7 +5,7 @@ export const ComplianceRiskInput = z.object({
   entity_name: z
     .string()
     .describe('Entity name to score')
-    .default('Acme Holdings LLC'),
+    .default('Amazon.com Inc'),
   jurisdiction: z
     .string()
     .optional()

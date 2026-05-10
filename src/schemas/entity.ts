@@ -5,7 +5,7 @@ export const EntityLookupInput = z.object({
   entity_name: z
     .string()
     .describe('Company name to look up')
-    .default('Acme Holdings LLC'),
+    .default('Amazon.com Inc'),
   jurisdiction: z
     .string()
     .optional()

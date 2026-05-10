@@ -14,7 +14,7 @@ export const FilingsFetchInput = z.object({
   jurisdiction: z
     .string()
     .optional()
-    .default('US-DE')
+    .default('US-CA')
     .describe('Jurisdiction code — required when using entity_name'),
   filing_types: z
     .array(z.string())

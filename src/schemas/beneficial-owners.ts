@@ -6,7 +6,7 @@ export const BeneficialOwnersInput = z.object({
     .string()
     .optional()
     .describe('Entity name — used if entity_id not provided')
-    .default('Acme Holdings LLC'),
+    .default('Amazon.com Inc'),
   jurisdiction: z
     .string()
     .optional()
