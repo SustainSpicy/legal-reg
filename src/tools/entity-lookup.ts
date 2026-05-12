@@ -1,5 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { EntityLookupInput, EntityLookupOutput } from '../schemas/entity.js';
+import { EntityLookupInput, EntityLookupSuccessSchema } from '../schemas/entity.js';
 import { resolveEntityFromCache, resolveEntityUpstream, SUPPORTED_JURISDICTIONS } from '../resolvers/entity-resolver.js';
 import { refreshEntityCache } from '../ingest/sos-portals.js';
 import { structuredError } from '../errors/codes.js';
@@ -12,7 +12,7 @@ export function registerEntityLookup(server: McpServer): void {
       description:
         'Verify any business entity: registration status, officers, and registered agent across US (all 50 states), UK, and Canada. Returns a normalised schema regardless of jurisdiction.',
       inputSchema: EntityLookupInput,
-      outputSchema: EntityLookupOutput,
+      outputSchema: EntityLookupSuccessSchema,
       _meta: {
         surface: 'both',
         queryEligible: true,

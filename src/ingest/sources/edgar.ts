@@ -6,6 +6,7 @@
 
 import type { EntityLookupOutputType } from '../../schemas/entity.js';
 import { generateEntityId } from '../../resolvers/entity-resolver.js';
+import { normaliseName } from '../../resolvers/name-normaliser.js';
 import { setCache, getCached } from '../../cache/helpers.js';
 
 const SUBMISSIONS_BASE = 'https://data.sec.gov/submissions';
@@ -61,31 +62,34 @@ export async function fetchEDGARSubmissions(cik: string): Promise<EDGARSubmissio
 
 export async function resolveEDGAREntity(entityName: string): Promise<EntityLookupOutputType | null> {
   const tickers = await loadTickerMap();
-  const normQuery = entityName.toLowerCase().trim();
+  const rawQuery = entityName.toLowerCase().trim();
+  const normQuery = normaliseName(entityName);
 
-  // Pass 1: exact title match
+  // Pass 1: normalised exact match (strips punctuation + legal suffixes)
+  // Catches "Amazon.com Inc" → "AMAZON COM INC", "Apple Inc" → "APPLE INC", etc.
   let match: TickerEntry | null = null;
   for (const entry of Object.values(tickers)) {
-    if (entry.title.toLowerCase() === normQuery) {
+    if (normaliseName(entry.title) === normQuery) {
       match = entry;
       break;
     }
   }
 
-  // Pass 2: starts-with match
+  // Pass 2: starts-with match (raw lowercase, for abbreviated queries)
   if (!match) {
     for (const entry of Object.values(tickers)) {
-      if (entry.title.toLowerCase().startsWith(normQuery)) {
+      if (entry.title.toLowerCase().startsWith(rawQuery)) {
         match = entry;
         break;
       }
     }
   }
 
-  // Pass 3: contains match
+  // Pass 3: normalised contains match
   if (!match) {
     for (const entry of Object.values(tickers)) {
-      if (entry.title.toLowerCase().includes(normQuery) || normQuery.includes(entry.title.toLowerCase())) {
+      const normTitle = normaliseName(entry.title);
+      if (normTitle.includes(normQuery) || normQuery.includes(normTitle)) {
         match = entry;
         break;
       }
@@ -99,10 +103,12 @@ export async function resolveEDGAREntity(entityName: string): Promise<EntityLook
   if (!profile) return null;
 
   const dates = profile.filings.recent.filingDate.filter(Boolean);
-  // Earliest filing date is the best available incorporation approximation
-  const earliestDate = dates.length > 0 ? dates[dates.length - 1]! : null;
   // Most recent filing date — used to infer active/dormant status
   const latestDate = dates.length > 0 ? dates[0]! : null;
+  // EDGAR submissions only expose a rolling recent-filings window, not the
+  // actual incorporation date. High-volume filers (Apple, Amazon) have windows
+  // starting years after actual incorporation. Return null rather than a
+  // misleading date; the Secretary of State portals hold the real date.
 
   const jurisdiction = profile.stateOfIncorporation
     ? `US-${profile.stateOfIncorporation}`
@@ -123,7 +129,7 @@ export async function resolveEDGAREntity(entityName: string): Promise<EntityLook
     canonical_name: profile.name,
     jurisdiction,
     status,
-    incorporated_at: earliestDate,
+    incorporated_at: null,
     registered_agent: null,
     officers: [],
     source: 'edgar',

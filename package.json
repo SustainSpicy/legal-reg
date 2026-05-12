@@ -11,7 +11,9 @@
     "seed": "node --loader ts-node/esm scripts/seed-smoke-tests.ts",
     "seed:docker": "node dist/scripts/seed-smoke-tests.js",
     "start:compiled": "node dist/src/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "mcp",
@@ -27,7 +29,9 @@
     "@ctxprotocol/sdk": "^0.10.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.5.1",
     "node-cron": "^4.2.1",
+    "pino": "^10.3.1",
     "playwright": "^1.59.1",
     "redis": "^5.11.0",
     "zod": "^4.3.6",
@@ -39,6 +43,7 @@
     "@types/node-cron": "^3.0.11",
     "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.5"
   }
 }

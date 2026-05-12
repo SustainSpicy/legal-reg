@@ -6,7 +6,7 @@
 // stale data with data_freshness: 'stale' and freshness_secs indicating age.
 
 import cron from 'node-cron';
-import { setCache, getCached, entityCacheKey } from '../cache/helpers.js';
+import { setCache, getCached, entityCacheKey, setScraperHealth, getScraperHealth } from '../cache/helpers.js';
 import { SCRAPE_ONLY_STATES, mapScrapedRecordToEntity } from './sources/sos-portals.js';
 import { SCRAPER_CONFIGS } from './sources/sos-scraper-configs.js';
 import type { ScrapedSOSRecord } from './sources/sos-portals.js';
@@ -167,7 +167,23 @@ export async function scrapeEntityOnDemand(
   const cached = await getCached<import('../schemas/entity.js').EntityLookupOutputType>(
     entityCacheKey(jurisdiction, entityName),
   );
-  if (cached) return cached;
+  if (cached) {
+    // Downgrade confidence if the scraper for this jurisdiction has been failing for >48h
+    const health = await getScraperHealth(jurisdiction);
+    const STALE_THRESHOLD_MS = 48 * 60 * 60 * 1000;
+    const scraperStale =
+      health !== null &&
+      (health.lastSuccessAt === null ||
+        Date.now() - health.lastSuccessAt > STALE_THRESHOLD_MS);
+    if (scraperStale) {
+      return {
+        ...cached,
+        confidence: Math.min(cached.confidence, 0.5),
+        data_freshness: 'stale',
+      };
+    }
+    return cached;
+  }
 
   const chromium = await getPlaywright();
   const browser = await chromium.launch({ headless: true });
@@ -218,10 +234,12 @@ export async function scrapeEntityOnDemand(
 
     const entity = mapScrapedRecordToEntity(record);
     await setCache(entityCacheKey(jurisdiction, name), entity, SCRAPE_TTL_SECS);
+    await setScraperHealth(jurisdiction, true, 1);
     return entity;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[scraper] On-demand scrape failed for ${entityName} (${jurisdiction}): ${msg}`);
+    await setScraperHealth(jurisdiction, false, 0);
     return null;
   } finally {
     await browser.close();
@@ -230,22 +248,34 @@ export async function scrapeEntityOnDemand(
 
 async function runNightlyScrape(): Promise<void> {
   console.log('[scraper] Starting nightly SOS scrape for no-API states...');
-  let totalScraped = 0;
+
+  const summary: Array<{ jurisdiction: string; count: number; ok: boolean }> = [];
 
   for (const jurisdiction of SCRAPE_ONLY_STATES) {
+    let count = 0;
+    let ok = false;
     try {
       console.log(`[scraper] Scraping ${jurisdiction}...`);
-      const count = await scrapeJurisdiction(jurisdiction);
-      totalScraped += count;
+      count = await scrapeJurisdiction(jurisdiction);
+      ok = count > 0;
       console.log(`[scraper] ${jurisdiction}: ${count} entities cached`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      // Non-fatal — other states continue, stale cache serves this one
       console.error(`[scraper] ${jurisdiction} failed: ${msg} — serving stale cache`);
     }
+    await setScraperHealth(jurisdiction, ok, count);
+    summary.push({ jurisdiction, count, ok });
   }
 
-  console.log(`[scraper] Nightly scrape complete. Total entities cached: ${totalScraped}`);
+  const succeeded = summary.filter((s) => s.ok).length;
+  const totalScraped = summary.reduce((acc, s) => acc + s.count, 0);
+  const failed = summary.filter((s) => !s.ok).map((s) => s.jurisdiction);
+
+  console.log(
+    `[scraper] Nightly scrape complete. ${succeeded}/${SCRAPE_ONLY_STATES.length} states ok, ` +
+    `${totalScraped} entities cached.` +
+    (failed.length > 0 ? ` Failed: ${failed.join(', ')}` : ''),
+  );
 }
 
 // Runs at 2am UTC every night

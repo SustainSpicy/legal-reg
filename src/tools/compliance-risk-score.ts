@@ -1,5 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { ComplianceRiskInput, ComplianceRiskOutput } from '../schemas/compliance.js';
+import { ComplianceRiskInput, ComplianceRiskSuccessSchema } from '../schemas/compliance.js';
 import { getCached, setCache, complianceCacheKey } from '../cache/helpers.js';
 import {
   resolveEntityFromCache,
@@ -38,7 +38,7 @@ export function registerComplianceRiskScore(server: McpServer): void {
       description:
         'Generate a transparent compliance risk score (0=low, 1=high) for any entity. Every signal, weight, and contribution is exposed in score_breakdown — no black-box outputs. Combines registration status, sanctions screening, officer records, data freshness, and jurisdiction risk.',
       inputSchema: ComplianceRiskInput,
-      outputSchema: ComplianceRiskOutput,
+      outputSchema: ComplianceRiskSuccessSchema,
       _meta: {
         surface: 'both',
         queryEligible: true,

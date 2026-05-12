@@ -10,12 +10,13 @@ import type { EntityLookupOutputType } from '../../schemas/entity.js';
 
 function mapStatus(raw: string): EntityLookupOutputType['status'] {
   const s = raw.toLowerCase();
+  // Check suspended before active — 'inactive' contains 'active' as a substring
+  if (s.includes('suspend') || s.includes('delinq') || s.includes('inactive')) return 'suspended';
   if (s.includes('active') || s.includes('good standing') || s.includes('current')) return 'active';
   if (
     s.includes('dissolv') || s.includes('cancel') || s.includes('terminat') ||
     s.includes('revok') || s.includes('forfeit') || s.includes('void') || s.includes('expired')
   ) return 'dissolved';
-  if (s.includes('suspend') || s.includes('delinq') || s.includes('inactive')) return 'suspended';
   return 'unknown';
 }
 

@@ -1,5 +1,5 @@
 import { normaliseName, similarityScore, soundex } from './name-normaliser.js';
-import { getCached, setCache, entityCacheKey } from '../cache/helpers.js';
+import { getCached, setCache, entityCacheKey, addToEntityWatchlist } from '../cache/helpers.js';
 import type { EntityLookupOutputType } from '../schemas/entity.js';
 import { lookupSOSEntity, SCRAPE_ONLY_STATES } from '../ingest/sources/sos-portals.js';
 import { resolveUKEntity } from '../ingest/sources/companies-house.js';
@@ -74,7 +74,7 @@ export const SUPPORTED_JURISDICTIONS: Record<string, string> = {
 
 // Jurisdictions that require nightly scraping (no public API)
 export const SCRAPE_ONLY_JURISDICTIONS = new Set([
-  'US-AL', 'US-AK', 'US-AR', 'US-HI', 'US-ID', 'US-MS', 'US-MT', 'US-ND',
+  'US-AL', 'US-AK', 'US-AR', 'US-HI', 'US-MS', 'US-MT', 'US-ND', 'US-WV',
 ]);
 
 export function generateEntityId(jurisdiction: string, name: string): string {
@@ -133,6 +133,8 @@ export async function resolveEntityUpstream(
   if (live) {
     // Write-through: cache live result for 4 hours
     await setCache(key, live, 14400);
+    // Track for background cache warming across all jurisdictions
+    await addToEntityWatchlist(entityName, jurisdiction);
     return live;
   }
 

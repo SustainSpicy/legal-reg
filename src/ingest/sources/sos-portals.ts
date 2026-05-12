@@ -18,20 +18,14 @@ import { lookupPendingStateEntity } from './sos-pending-states.js';
 // States with open REST APIs or structured data exports — implemented and verified live
 export const SOS_IMPLEMENTED: Record<string, string> = {
   'US-DE': 'delaware_sos',
+  'US-CA': 'california_sos',
   'US-NY': 'new_york_dos',
+  'US-TX': 'texas_sos',
+  'US-FL': 'florida_sunbiz',
+  'US-CO': 'colorado_sos',
+  'US-WA': 'washington_sos',
   'US-IL': 'illinois_sos',
   'US-GA': 'georgia_sos',
-};
-
-// States whose portals are behind Cloudflare/WAF and block programmatic access.
-// Requests fall through to EDGAR automatically — no wasted round-trips.
-// Re-enable once alternative endpoints are found.
-export const SOS_CLOUDFLARE_BLOCKED: Record<string, string> = {
-  'US-CA': 'california_sos',  // BizFile: WAF blocks all non-browser UA
-  'US-FL': 'florida_sunbiz',  // SunBiz: Cloudflare Bot Protection
-  'US-WA': 'washington_sos',  // CCFS: Cloudflare, API base moved
-  'US-TX': 'texas_sos',       // Comptroller: returns HTML not JSON
-  'US-CO': 'colorado_sos',    // CSOS: 404, endpoint moved
 };
 
 // States with documented APIs — implementation pending (Weeks 8–10)
@@ -91,12 +85,14 @@ export async function lookupSOSEntity(
     return null;
   }
 
-  // Short-circuit states known to be behind WAF/Cloudflare — go straight to EDGAR
-  if (jurisdiction in SOS_CLOUDFLARE_BLOCKED) return null;
-
   switch (jurisdiction) {
     case 'US-DE': return lookupDelawareEntity(entityName);
+    case 'US-CA': return lookupCaliforniaEntity(entityName);
     case 'US-NY': return lookupNewYorkEntity(entityName);
+    case 'US-TX': return lookupTexasEntity(entityName);
+    case 'US-FL': return lookupFloridaEntity(entityName);
+    case 'US-CO': return lookupColoradoEntity(entityName);
+    case 'US-WA': return lookupWashingtonEntity(entityName);
     case 'US-IL': return lookupIllinoisEntity(entityName);
     case 'US-GA': return lookupGeorgiaEntity(entityName);
     default:

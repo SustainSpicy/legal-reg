@@ -1,5 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { BeneficialOwnersInput, BeneficialOwnersOutput } from '../schemas/beneficial-owners.js';
+import { BeneficialOwnersInput, BeneficialOwnersSuccessSchema } from '../schemas/beneficial-owners.js';
 import { getCached, setCache, beneficialOwnersCacheKey } from '../cache/helpers.js';
 import { generateEntityId } from '../resolvers/entity-resolver.js';
 import { structuredError } from '../errors/codes.js';
@@ -211,7 +211,7 @@ export function registerBeneficialOwners(server: McpServer): void {
         'Note: FinCEN BOI is a restricted government API unavailable to commercial callers; ' +
         'GLEIF + EDGAR provide equivalent coverage for public and large private entities.',
       inputSchema: BeneficialOwnersInput,
-      outputSchema: BeneficialOwnersOutput,
+      outputSchema: BeneficialOwnersSuccessSchema,
       _meta: {
         surface: 'both',
         queryEligible: true,

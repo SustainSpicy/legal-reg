@@ -3,16 +3,18 @@
 // NEVER triggered by a live agent request
 
 import cron from 'node-cron';
-import { setCache, entityCacheKey } from '../cache/helpers.js';
-import { lookupSOSEntity, SOS_IMPLEMENTED } from './sources/sos-portals.js';
+import { setCache, entityCacheKey, getEntityWatchlist } from '../cache/helpers.js';
+import { lookupSOSEntity, SOS_IMPLEMENTED, SOS_PENDING } from './sources/sos-portals.js';
 import { resolveUKEntity } from './sources/companies-house.js';
 import { resolveEDGAREntity } from './sources/edgar.js';
 
 const ENTITY_TTL_SECS = 14400; // 4 hours
 
-// Popular entity names to warm the cache on startup / cron tick.
-// In production this list grows from access-log analytics.
+// Static seeds — one well-known entity per implemented and pending jurisdiction.
+// These ensure every state has at least one warm cache entry on startup.
+// The dynamic watchlist (populated from live requests) supplements this list.
 const WARM_ENTITIES: Array<{ name: string; jurisdiction: string }> = [
+  // Core implemented states
   { name: 'Apple Inc', jurisdiction: 'US-DE' },
   { name: 'Microsoft Corporation', jurisdiction: 'US-DE' },
   { name: 'Amazon.com Inc', jurisdiction: 'US-DE' },
@@ -20,31 +22,59 @@ const WARM_ENTITIES: Array<{ name: string; jurisdiction: string }> = [
   { name: 'Tesla Inc', jurisdiction: 'US-DE' },
   { name: 'Meta Platforms Inc', jurisdiction: 'US-DE' },
   { name: 'Alphabet Inc', jurisdiction: 'US-DE' },
+  { name: 'Salesforce Inc', jurisdiction: 'US-CA' },
+  { name: 'Gap Inc', jurisdiction: 'US-CA' },
+  { name: 'JPMorgan Chase Bank National Association', jurisdiction: 'US-NY' },
+  { name: 'Citibank NA', jurisdiction: 'US-NY' },
+  { name: 'AT&T Inc', jurisdiction: 'US-TX' },
+  { name: 'Enterprise Products Partners LP', jurisdiction: 'US-TX' },
+  { name: 'World Fuel Services Corporation', jurisdiction: 'US-FL' },
+  { name: 'Publix Super Markets Inc', jurisdiction: 'US-FL' },
+  { name: 'United Airlines Holdings Inc', jurisdiction: 'US-IL' },
+  { name: 'Exelon Corporation', jurisdiction: 'US-IL' },
+  { name: 'The Coca-Cola Company', jurisdiction: 'US-GA' },
+  { name: 'Delta Air Lines Inc', jurisdiction: 'US-GA' },
+  { name: 'Ball Corporation', jurisdiction: 'US-CO' },
+  { name: 'Amazon Web Services Inc', jurisdiction: 'US-WA' },
+  { name: 'Starbucks Corporation', jurisdiction: 'US-WA' },
+  // UK
   { name: 'Barclays Bank PLC', jurisdiction: 'GB' },
   { name: 'HSBC Holdings PLC', jurisdiction: 'GB' },
   { name: 'Lloyds Banking Group PLC', jurisdiction: 'GB' },
+  // Pending states — one seed each so the first request is fast
+  { name: 'Wynn Resorts Ltd', jurisdiction: 'US-NV' },
+  { name: 'Liberty Mutual Group Inc', jurisdiction: 'US-MA' },
+  { name: 'Sinclair Oil Corporation', jurisdiction: 'US-WY' },
+  { name: 'Nike Inc', jurisdiction: 'US-OR' },
+  { name: 'Freeport-McMoRan Inc', jurisdiction: 'US-AZ' },
+  { name: 'Target Corporation', jurisdiction: 'US-MN' },
+  { name: 'Progressive Corporation', jurisdiction: 'US-OH' },
+  { name: 'Comcast Corporation', jurisdiction: 'US-PA' },
+  { name: 'Johnson and Johnson', jurisdiction: 'US-NJ' },
+  { name: 'Capital One Financial Corporation', jurisdiction: 'US-VA' },
+  { name: 'Duke Energy Corporation', jurisdiction: 'US-NC' },
+  { name: 'FedEx Corporation', jurisdiction: 'US-TN' },
+  { name: 'Emerson Electric Co', jurisdiction: 'US-MO' },
+  { name: 'Sonoco Products Company', jurisdiction: 'US-SC' },
+  { name: 'Eli Lilly and Company', jurisdiction: 'US-IN' },
+  { name: 'Epic Systems Corporation', jurisdiction: 'US-WI' },
+  { name: 'Lockheed Martin Corporation', jurisdiction: 'US-MD' },
+  { name: 'Cigna Group', jurisdiction: 'US-CT' },
+  { name: 'Humana Inc', jurisdiction: 'US-KY' },
+  { name: 'Devon Energy Corporation', jurisdiction: 'US-OK' },
+  { name: 'Principal Financial Group Inc', jurisdiction: 'US-IA' },
+  { name: 'Entergy Louisiana LLC', jurisdiction: 'US-LA' },
+  { name: 'Spirit AeroSystems Inc', jurisdiction: 'US-KS' },
+  { name: 'Zions Bancorporation NA', jurisdiction: 'US-UT' },
+  { name: 'PNM Resources Inc', jurisdiction: 'US-NM' },
+  { name: 'Berkshire Hathaway Inc', jurisdiction: 'US-NE' },
+  { name: 'WEX Inc', jurisdiction: 'US-ME' },
+  { name: 'CVS Health Corporation', jurisdiction: 'US-RI' },
+  { name: 'PC Connection Inc', jurisdiction: 'US-NH' },
+  { name: 'GlobalFoundries US Inc', jurisdiction: 'US-VT' },
+  { name: 'Sanford USD Medical Center', jurisdiction: 'US-SD' },
+  { name: 'Micron Technology Inc', jurisdiction: 'US-ID' },
 ];
-
-async function warmEntityCache(): Promise<void> {
-  console.log('[ingest:sos] Warming entity cache for popular entities...');
-  const results = await Promise.allSettled(
-    WARM_ENTITIES.map(async ({ name, jurisdiction }) => {
-      const result = await refreshEntityCache(name, jurisdiction);
-      if (result) {
-        console.log(`[ingest:sos] Warmed: ${name} (${jurisdiction})`);
-      }
-    }),
-  );
-  const failed = results.filter((r) => r.status === 'rejected').length;
-  if (failed > 0) {
-    console.warn(`[ingest:sos] Cache warm: ${failed}/${WARM_ENTITIES.length} entities failed`);
-  }
-}
-
-async function ingestHighVolumeStates(): Promise<void> {
-  console.log(`[ingest:sos] Refreshing ${Object.keys(SOS_IMPLEMENTED).length} implemented SOS jurisdictions`);
-  await warmEntityCache();
-}
 
 /**
  * Refresh a single entity in the cache.
@@ -60,12 +90,9 @@ export async function refreshEntityCache(
     if (jurisdiction === 'GB') {
       result = await resolveUKEntity(entityName);
     } else if (jurisdiction.startsWith('US')) {
-      // Try jurisdiction-specific SOS portal first
       result = await lookupSOSEntity(entityName, jurisdiction);
-      // Fall back to EDGAR for states not yet implemented or public companies
       if (!result) {
         result = await resolveEDGAREntity(entityName);
-        // Correct jurisdiction from EDGAR if our target is more specific
         if (result && result.jurisdiction !== jurisdiction) {
           result = { ...result, jurisdiction };
         }
@@ -83,6 +110,45 @@ export async function refreshEntityCache(
     console.error(`[ingest:sos] Cache refresh failed for ${entityName} (${jurisdiction}): ${msg}`);
   }
   return null;
+}
+
+async function ingestHighVolumeStates(): Promise<void> {
+  // Build the full warming list: static seeds + top-5 from each jurisdiction's watchlist
+  const entities = new Map<string, string>(); // key `jur:name` → dedup
+
+  for (const { name, jurisdiction } of WARM_ENTITIES) {
+    entities.set(`${jurisdiction}:${name.toLowerCase()}`, JSON.stringify({ name, jurisdiction }));
+  }
+
+  const allJurisdictions = Object.keys({ ...SOS_IMPLEMENTED, ...SOS_PENDING });
+  await Promise.all(
+    allJurisdictions.map(async (jur) => {
+      const watchlist = await getEntityWatchlist(jur);
+      for (const name of watchlist.slice(0, 5)) {
+        entities.set(`${jur}:${name}`, JSON.stringify({ name, jurisdiction: jur }));
+      }
+    }),
+  );
+
+  const list = [...entities.values()].map(
+    (v) => JSON.parse(v) as { name: string; jurisdiction: string },
+  );
+
+  console.log(`[ingest:sos] Warming entity cache for ${list.length} entities...`);
+
+  const results = await Promise.allSettled(
+    list.map(async ({ name, jurisdiction }) => {
+      const result = await refreshEntityCache(name, jurisdiction);
+      if (result) {
+        console.log(`[ingest:sos] Warmed: ${name} (${jurisdiction})`);
+      }
+    }),
+  );
+
+  const failed = results.filter((r) => r.status === 'rejected').length;
+  if (failed > 0) {
+    console.warn(`[ingest:sos] Cache warm: ${failed}/${list.length} entities failed`);
+  }
 }
 
 // Every 4 hours

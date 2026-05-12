@@ -39,12 +39,8 @@ export function structuredError(
     },
     ...partialData,
   };
-  const structuredPayload: ErrorOutputType = {
-    error: { code, message, retryable, fallback_used: !!partialData },
-  };
   return {
     isError: true,
     content: [{ type: 'text' as const, text: JSON.stringify(errorPayload) }],
-    structuredContent: structuredPayload,
   };
 }

@@ -38,8 +38,8 @@ function mapCAStatus(raw: string): EntityLookupOutputType['status'] {
 export async function lookupCaliforniaEntity(entityName: string): Promise<EntityLookupOutputType | null> {
   const body = JSON.stringify({
     SEARCH_VALUE: entityName,
-    SEARCH_FILTER_TYPE_ID: '0', // 0 = all entity types
-    SEARCH_TYPE_ID: '1',        // 1 = begins with
+    SEARCH_FILTER_TYPE_ID: '0',
+    SEARCH_TYPE_ID: '1',
     sortColumn: 'score',
     sortOrder: 'desc',
     numberOfRows: 5,
@@ -50,18 +50,24 @@ export async function lookupCaliforniaEntity(entityName: string): Promise<Entity
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'User-Agent': 'CorpSignal-MCP/1.0',
+      'Accept': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (compatible; CorpSignal/1.0; +https://corpsignal.com)',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Origin': 'https://bizfileonline.sos.ca.gov',
+      'Referer': 'https://bizfileonline.sos.ca.gov/search/business',
+      'Sec-Fetch-Site': 'same-origin',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Dest': 'empty',
     },
     body,
-  });
+  }).catch(() => null);
 
-  if (!res.ok) throw new Error(`CA SOS search failed: ${res.status}`);
+  if (!res?.ok) return null;
 
-  const data = await res.json() as CASearchResponse;
-  const hits = data.hits?.hits ?? [];
+  const data = await res.json().catch(() => null) as CASearchResponse | null;
+  const hits = data?.hits?.hits ?? [];
   if (hits.length === 0) return null;
 
-  // Find best name match
   const normQuery = normaliseName(entityName);
   const ranked = hits
     .map((h) => h._source)
@@ -88,7 +94,7 @@ export async function lookupCaliforniaEntity(entityName: string): Promise<Entity
       : null,
     officers: [],
     source: 'california_sos',
-    source_url: `https://bizfileonline.sos.ca.gov/search/business`,
+    source_url: 'https://bizfileonline.sos.ca.gov/search/business',
     freshness_secs: 0,
     confidence: best.score,
     data_freshness: 'fresh',

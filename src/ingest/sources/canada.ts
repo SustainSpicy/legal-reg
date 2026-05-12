@@ -20,12 +20,13 @@ import type { FilingItemType } from '../../schemas/filings.js';
 
 function mapStatus(raw: string): EntityLookupOutputType['status'] {
   const s = raw.toLowerCase();
+  // Check suspended before active — 'inactive' contains 'active' as a substring
+  if (s.includes('suspend') || s.includes('inactiv') || s.includes('défaut')) return 'suspended';
   if (s.includes('active') || s.includes('good standing') || s.includes('en règle')) return 'active';
   if (
     s.includes('dissolv') || s.includes('cancel') || s.includes('wind') ||
     s.includes('annul') || s.includes('radié') || s.includes('dissous')
   ) return 'dissolved';
-  if (s.includes('suspend') || s.includes('inactiv') || s.includes('défaut')) return 'suspended';
   return 'unknown';
 }
 

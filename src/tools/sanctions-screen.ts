@@ -1,5 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { SanctionsScreenInput, SanctionsScreenOutput } from '../schemas/sanctions.js';
+import { SanctionsScreenInput, SanctionsScreenSuccessSchema } from '../schemas/sanctions.js';
 import { getCached, setCache, sanctionsScreenCacheKey } from '../cache/helpers.js';
 import { screenEntity } from '../resolvers/sanctions-matcher.js';
 import type { SanctionsScreenOutputType } from '../schemas/sanctions.js';
@@ -13,7 +13,7 @@ export function registerSanctionsScreen(server: McpServer): void {
       description:
         'Screen any entity against all major sanctions lists: OFAC SDN, OFAC Consolidated, FinCEN, UN 1267, EU CFSP, and HM Treasury. Returns exact hits, normalised hits, and fuzzy candidates above the confidence threshold.',
       inputSchema: SanctionsScreenInput,
-      outputSchema: SanctionsScreenOutput,
+      outputSchema: SanctionsScreenSuccessSchema,
       _meta: {
         surface: 'both',
         queryEligible: true,

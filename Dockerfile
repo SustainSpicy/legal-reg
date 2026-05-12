@@ -11,6 +11,10 @@ COPY scripts/ ./scripts/
 
 RUN npm run build
 
+# Prune dev dependencies in the builder so we can copy node_modules directly
+# into the runner without a second npm ci (avoids OOM in constrained containers)
+RUN npm prune --omit=dev
+
 # ---
 
 FROM node:22-alpine AS runner
@@ -35,7 +39,7 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+COPY --from=builder /app/node_modules ./node_modules
 
 COPY --from=builder /app/dist ./dist
 

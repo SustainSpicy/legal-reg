@@ -1,5 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { FilingsFetchInput, FilingsFetchOutput } from '../schemas/filings.js';
+import { FilingsFetchInput, FilingsFetchSuccessSchema } from '../schemas/filings.js';
 import { getCached, setCache, filingsCacheKey } from '../cache/helpers.js';
 import { generateEntityId, resolveEntityFromCache } from '../resolvers/entity-resolver.js';
 import { fetchEDGARSubmissions, resolveEDGAREntity } from '../ingest/sources/edgar.js';
@@ -92,7 +92,7 @@ export function registerFilingsFetch(server: McpServer): void {
       description:
         'Retrieve recent corporate filings for any US public company (via SEC EDGAR) or UK company (via Companies House). Optionally parse key financial metrics from the latest 10-K annual filing.',
       inputSchema: FilingsFetchInput,
-      outputSchema: FilingsFetchOutput,
+      outputSchema: FilingsFetchSuccessSchema,
       _meta: {
         surface: 'both',
         queryEligible: true,

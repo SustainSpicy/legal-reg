@@ -5,7 +5,12 @@
 import type { EntityLookupOutputType } from '../../schemas/entity.js';
 import { generateEntityId } from '../../resolvers/entity-resolver.js';
 
-const WA_BASE = 'https://ccfs.sos.wa.gov/api';
+// CCFS API paths to try in order (base has shifted across portal versions)
+const WA_API_CANDIDATES = [
+  'https://ccfs.sos.wa.gov/api/Search/EntitySearch',
+  'https://ccfs.sos.wa.gov/api/v1/Search/EntitySearch',
+  'https://ccfs.sos.wa.gov/api/v2/Search/EntitySearch',
+];
 
 interface WASearchResult {
   entityId?: string;
@@ -33,24 +38,28 @@ interface WASearchResponse {
 export async function lookupWashingtonEntity(
   entityName: string,
 ): Promise<EntityLookupOutputType | null> {
-  const url =
-    `${WA_BASE}/Search/EntitySearch?` +
-    new URLSearchParams({ name: entityName, take: '5', skip: '0' }).toString();
+  const qs = new URLSearchParams({ name: entityName, take: '5', skip: '0' }).toString();
 
-  const res = await fetch(url, {
-    headers: { Accept: 'application/json' },
-  });
-  if (!res.ok) return null;
+  let data: WASearchResponse | null = null;
+  for (const base of WA_API_CANDIDATES) {
+    const res = await fetch(`${base}?${qs}`, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (compatible; CorpSignal/1.0; +https://corpsignal.com)',
+        'Referer': 'https://ccfs.sos.wa.gov/',
+      },
+    }).catch(() => null);
+    if (!res?.ok) continue;
+    data = await res.json().catch(() => null) as WASearchResponse | null;
+    if (data) break;
+  }
 
-  const data = await res.json() as WASearchResponse;
+  if (!data) return null;
   const results = data.data ?? [];
   if (results.length === 0) return null;
 
-  // Pick best match — prefer exact name match
   const best =
-    results.find(
-      (r) => r.entityName?.toLowerCase() === entityName.toLowerCase(),
-    ) ?? results[0]!;
+    results.find((r) => r.entityName?.toLowerCase() === entityName.toLowerCase()) ?? results[0]!;
 
   const rawStatus = (best.entityStatus ?? '').toLowerCase();
   const status: EntityLookupOutputType['status'] =
