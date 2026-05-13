@@ -155,6 +155,20 @@ async function main(): Promise<void> {
     await transport.handleRequest(req, res, req.body);
   });
 
+  // Stateless transport — no persistent SSE session. Return 405 so clients
+  // fall back to POST-only mode rather than treating this as a missing endpoint.
+  app.get('/mcp', (_req, res) => {
+    res.status(405).set('Allow', 'POST').json({
+      error: 'SSE streaming not supported — server uses stateless POST transport',
+    });
+  });
+
+  app.delete('/mcp', (_req, res) => {
+    res.status(405).set('Allow', 'POST').json({
+      error: 'Session management not supported — server uses stateless POST transport',
+    });
+  });
+
   // ---- Start server ----------------------------------------------------------
 
   const httpServer = app.listen(PORT, () => {

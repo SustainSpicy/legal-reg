@@ -43,7 +43,13 @@
       "Bash(curl -s -X POST http://localhost:3000/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"entity_lookup\",\"arguments\":{\"entity_name\":\"Apple Inc\",\"jurisdiction\":\"US-CA\"}}}')",
       "Bash(curl -s -X POST http://localhost:3000/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"sanctions_screen\",\"arguments\":{\"entity_name\":\"Rosneft\",\"lists\":[\"OFAC_SDN\",\"EU_CFSP\",\"HM_TREASURY\"]}}}')",
       "Bash(curl -s -X POST http://localhost:3000/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"filings_fetch\",\"arguments\":{\"entity_name\":\"Microsoft Corporation\",\"jurisdiction\":\"US-WA\",\"limit\":5}}}')",
-      "Bash(curl -s -X POST http://localhost:3000/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"beneficial_owners\",\"arguments\":{\"entity_name\":\"Rolls-Royce Holdings plc\",\"jurisdiction\":\"GB\"}}}')"
+      "Bash(curl -s -X POST http://localhost:3000/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"beneficial_owners\",\"arguments\":{\"entity_name\":\"Rolls-Royce Holdings plc\",\"jurisdiction\":\"GB\"}}}')",
+      "WebFetch(domain:www.sos.ca.gov)",
+      "WebSearch",
+      "WebFetch(domain:bizfileonline.sos.ca.gov)",
+      "Bash(curl -s -X POST https://corpsignal.vctry4real.dev/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}')",
+      "Bash(curl -sv -X POST https://corpsignal.vctry4real.dev/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}')",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' -X POST https://corpsignal.vctry4real.dev/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}')"
     ],
     "additionalDirectories": [
       "c:\\Users\\johns\\.claude\\projects\\c--Users-johns-Documents-MCP-legal-reg\\memory"
