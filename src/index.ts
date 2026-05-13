@@ -79,6 +79,10 @@ async function main(): Promise<void> {
 
   const app = express();
 
+  // Trust the first reverse proxy (Traefik on Dokploy / nginx on other PaaS).
+  // Required for express-rate-limit to read X-Forwarded-For correctly.
+  app.set('trust proxy', 1);
+
   // Structured HTTP request/response logging (skips /health to reduce noise)
   app.use(httpLogger);
 

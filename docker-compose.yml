@@ -8,7 +8,6 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379
       - PORT=3000
-      - NODE_ENV=${NODE_ENV:-development}
     depends_on:
       redis:
         condition: service_healthy
