@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 import express from 'express';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -138,6 +138,23 @@ async function main(): Promise<void> {
     void handleCompaniesHouseWebhook(req.body as unknown);
   });
 
+  // ---- MCP session store ----------------------------------------------------
+  // Sessions are keyed by the MCP session ID assigned at initialize time.
+  // Stored in-process memory; a cleanup interval evicts idle sessions after 1h.
+
+  interface McpSession {
+    transport: StreamableHTTPServerTransport;
+    lastActivity: number;
+  }
+  const sessions = new Map<string, McpSession>();
+
+  setInterval(() => {
+    const cutoff = Date.now() - 60 * 60 * 1000;
+    for (const [id, s] of sessions) {
+      if (s.lastActivity < cutoff) sessions.delete(id);
+    }
+  }, 5 * 60 * 1000).unref();
+
   // ---- MCP endpoint ---------------------------------------------------------
   // Context Protocol middleware enforces billing on paid tool calls.
   // Rate limiter applies in all environments as a safety-net floor.
@@ -150,27 +167,51 @@ async function main(): Promise<void> {
 
   app.use('/mcp', mcpRateLimiter);
 
+  // POST — initialize (no session header) creates a new session.
+  // Subsequent tool calls include mcp-session-id to reuse the transport.
   app.post('/mcp', async (req, res) => {
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+    if (sessionId) {
+      const session = sessions.get(sessionId);
+      if (!session) { res.status(404).json({ error: 'Session not found or expired' }); return; }
+      session.lastActivity = Date.now();
+      await session.transport.handleRequest(req, res, req.body);
+      return;
+    }
+
+    // New session
     const server = new McpServer({ name: 'corpsignal-mcp', version: '1.0.0' });
     registerAllTools(server);
 
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+    });
+
+    transport.onclose = () => {
+      if (transport.sessionId) sessions.delete(transport.sessionId);
+    };
+
     await server.connect(transport);
+    if (transport.sessionId) sessions.set(transport.sessionId, { transport, lastActivity: Date.now() });
     await transport.handleRequest(req, res, req.body);
   });
 
-  // Stateless transport — no persistent SSE session. Return 405 so clients
-  // fall back to POST-only mode rather than treating this as a missing endpoint.
-  app.get('/mcp', (_req, res) => {
-    res.status(405).set('Allow', 'POST').json({
-      error: 'SSE streaming not supported — server uses stateless POST transport',
-    });
+  // GET — open SSE stream for server-to-client messages on an existing session.
+  app.get('/mcp', async (req, res) => {
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    if (!sessionId) { res.status(400).json({ error: 'Missing mcp-session-id header' }); return; }
+    const session = sessions.get(sessionId);
+    if (!session) { res.status(404).json({ error: 'Session not found or expired' }); return; }
+    session.lastActivity = Date.now();
+    await session.transport.handleRequest(req, res);
   });
 
-  app.delete('/mcp', (_req, res) => {
-    res.status(405).set('Allow', 'POST').json({
-      error: 'Session management not supported — server uses stateless POST transport',
-    });
+  // DELETE — explicit session teardown.
+  app.delete('/mcp', (req, res) => {
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    if (sessionId) sessions.delete(sessionId);
+    res.status(200).json({ closed: true });
   });
 
   // ---- Start server ----------------------------------------------------------
