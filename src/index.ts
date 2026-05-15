@@ -199,8 +199,9 @@ async function main(): Promise<void> {
     };
 
     await server.connect(transport);
-    if (transport.sessionId) sessions.set(transport.sessionId, { transport, lastActivity: Date.now() });
     await transport.handleRequest(req, res, req.body);
+    // sessionId is assigned during handleRequest — store after it resolves
+    if (transport.sessionId) sessions.set(transport.sessionId, { transport, lastActivity: Date.now() });
   });
 
   // GET — open SSE stream for server-to-client messages on an existing session.
