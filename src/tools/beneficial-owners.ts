@@ -3,6 +3,7 @@ import { BeneficialOwnersInput, BeneficialOwnersSuccessSchema } from '../schemas
 import { getCached, setCache, beneficialOwnersCacheKey } from '../cache/helpers.js';
 import { generateEntityId } from '../resolvers/entity-resolver.js';
 import { structuredError } from '../errors/codes.js';
+import { logger } from '../logger.js';
 import { resolveCompanyNumber } from '../ingest/sources/companies-house-filings.js';
 import type { BeneficialOwnersOutputType } from '../schemas/beneficial-owners.js';
 
@@ -205,11 +206,11 @@ export function registerBeneficialOwners(server: McpServer): void {
     'beneficial_owners',
     {
       description:
-        'Retrieve beneficial ownership (UBO) data. For UK entities: Companies House PSC register. ' +
-        'For US and global entities: GLEIF LEI registry (structural parent relationships) with ' +
-        'EDGAR Schedule 13G/D fallback for US public companies (>5% holders). ' +
-        'Note: FinCEN BOI is a restricted government API unavailable to commercial callers; ' +
-        'GLEIF + EDGAR provide equivalent coverage for public and large private entities.',
+        'Retrieve beneficial ownership (UBO) data for AML/KYC compliance. For UK entities: ' +
+        'Companies House PSC register (persons with significant control). For US and global entities: ' +
+        'GLEIF LEI registry (structural parent relationships) with EDGAR Schedule 13G/D fallback for ' +
+        'US public companies (>5% holders). Use this when the user asks who owns a company, who controls ' +
+        'a business, or wants to identify ultimate beneficial owners (UBOs) for due diligence.',
       inputSchema: BeneficialOwnersInput,
       outputSchema: BeneficialOwnersSuccessSchema,
       _meta: {
@@ -270,11 +271,7 @@ export function registerBeneficialOwners(server: McpServer): void {
             source = 'EDGAR_PROXY';
           } else {
             // CTA-exempt small private businesses, or entity not in GLEIF/EDGAR
-            console.log(
-              `[bowners] No ownership data found for '${entity_name}' (${canonicalId}). ` +
-              `Entity may be a small private company not registered with GLEIF or EDGAR. ` +
-              `FinCEN BOI is restricted to government/BSA-regulated callers.`,
-            );
+            logger.info({ entity_name, canonicalId }, 'No ownership data found — entity may be a small private company not in GLEIF/EDGAR');
             disclosureStatus = 'unavailable';
             source = 'none';
           }

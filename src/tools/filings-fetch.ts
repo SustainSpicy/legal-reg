@@ -90,7 +90,7 @@ export function registerFilingsFetch(server: McpServer): void {
     'filings_fetch',
     {
       description:
-        'Retrieve recent corporate filings for any US public company (via SEC EDGAR) or UK company (via Companies House). Optionally parse key financial metrics from the latest 10-K annual filing.',
+        'Retrieve recent corporate filings for any US public company (via SEC EDGAR), UK company (via Companies House), or Canadian public company (via SEDAR+). Optionally parse key financial metrics from the latest 10-K annual filing. Use this when the user wants to see a company recent regulatory filings, check when they last filed, retrieve annual reports, or verify SEC or Companies House registration history.',
       inputSchema: FilingsFetchInput,
       outputSchema: FilingsFetchSuccessSchema,
       _meta: {

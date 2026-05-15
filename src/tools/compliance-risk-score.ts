@@ -36,7 +36,7 @@ export function registerComplianceRiskScore(server: McpServer): void {
     'compliance_risk_score',
     {
       description:
-        'Generate a transparent compliance risk score (0=low, 1=high) for any entity. Every signal, weight, and contribution is exposed in score_breakdown — no black-box outputs. Combines registration status, sanctions screening, officer records, data freshness, and jurisdiction risk.',
+        'Generate a transparent compliance risk score (0=low, 1=high) for any entity. Every signal, weight, and contribution is exposed in score_breakdown — no black-box outputs. Combines registration status, sanctions screening, officer records, data freshness, and FATF jurisdiction risk. Use this when assessing counterparty risk before onboarding, during due diligence reviews, or when the user asks for a risk rating or compliance assessment of a company.',
       inputSchema: ComplianceRiskInput,
       outputSchema: ComplianceRiskSuccessSchema,
       _meta: {

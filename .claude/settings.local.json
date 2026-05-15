@@ -49,7 +49,9 @@
       "WebFetch(domain:bizfileonline.sos.ca.gov)",
       "Bash(curl -s -X POST https://corpsignal.vctry4real.dev/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}')",
       "Bash(curl -sv -X POST https://corpsignal.vctry4real.dev/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}')",
-      "Bash(curl -s -o /dev/null -w '%{http_code}' -X POST https://corpsignal.vctry4real.dev/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}')"
+      "Bash(curl -s -o /dev/null -w '%{http_code}' -X POST https://corpsignal.vctry4real.dev/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}')",
+      "Bash(ssh -vT git@github.com)",
+      "Bash(Select-String -Pattern \"Offering|Authenticated|identity|debug1: Trying\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\johns\\.claude\\projects\\c--Users-johns-Documents-MCP-legal-reg\\memory"

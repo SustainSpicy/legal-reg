@@ -10,7 +10,7 @@ export function registerEntityLookup(server: McpServer): void {
     'entity_lookup',
     {
       description:
-        'Verify any business entity: registration status, officers, and registered agent across US (all 50 states), UK, and Canada. Returns a normalised schema regardless of jurisdiction.',
+        'Verify any business entity: registration status, officers, and registered agent across US (all 50 states), UK (Companies House), and Canada. Returns a normalised schema regardless of jurisdiction. Use this when the user asks whether a company is active, wants to verify incorporation details, check if a business is legitimately registered, or confirm an entity registered agent.',
       inputSchema: EntityLookupInput,
       outputSchema: EntityLookupSuccessSchema,
       _meta: {

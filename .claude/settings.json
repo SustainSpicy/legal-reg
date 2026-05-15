@@ -22,7 +22,12 @@
       "Bash(curl -s \"https://ccfs.sos.wa.gov/\")",
       "Bash(curl -s https://search.sunbiz.org/Inquiry/CorporationSearch/SearchResultDetail -H 'User-Agent: Mozilla/5.0')",
       "Bash(curl -s \"https://ccfs.sos.wa.gov/apiURL.js\")",
-      "Bash(curl -sI \"https://data.texas.gov/resource/9cir-efvs.json?taxpayer_name=Dell\")"
+      "Bash(curl -sI \"https://data.texas.gov/resource/9cir-efvs.json?taxpayer_name=Dell\")",
+      "WebFetch(domain:python-binance.readthedocs.io)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:context7.com)",
+      "Bash(node scripts/validate-endpoint.mjs)",
+      "Bash(curl -s -X POST \"https://corpsignal.vctry4real.dev/mcp\" -H \"Content-Type: application/json\" -H \"Accept: application/json, text/event-stream\" -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"test\",\"version\":\"1.0\"}}}' -v)"
     ]
   }
 }

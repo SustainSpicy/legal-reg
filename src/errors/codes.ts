@@ -42,5 +42,6 @@ export function structuredError(
   return {
     isError: true,
     content: [{ type: 'text' as const, text: JSON.stringify(errorPayload) }],
+    structuredContent: errorPayload,
   };
 }

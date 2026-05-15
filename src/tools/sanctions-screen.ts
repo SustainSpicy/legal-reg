@@ -11,7 +11,7 @@ export function registerSanctionsScreen(server: McpServer): void {
     'sanctions_screen',
     {
       description:
-        'Screen any entity against all major sanctions lists: OFAC SDN, OFAC Consolidated, FinCEN, UN 1267, EU CFSP, and HM Treasury. Returns exact hits, normalised hits, and fuzzy candidates above the confidence threshold.',
+        'Screen any entity against all major sanctions lists: OFAC SDN, OFAC Consolidated, FinCEN, UN 1267, EU CFSP, and HM Treasury. Returns exact hits, normalised hits, and fuzzy candidates above the confidence threshold. Use this when performing KYC/AML due diligence, verifying a counterparty is not on a sanctions register, or checking before a transaction or onboarding.',
       inputSchema: SanctionsScreenInput,
       outputSchema: SanctionsScreenSuccessSchema,
       _meta: {
