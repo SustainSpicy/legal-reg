@@ -13,8 +13,8 @@ export const EntityLookupInput = z.object({
       'ISO jurisdiction code (e.g. US-DE, US-CA, GB). Omit to search all supported jurisdictions.',
     )
     .default('US-DE'),
-  include_officers: z.boolean().optional().default(true),
-  include_registered_agent: z.boolean().optional().default(true),
+  include_officers: z.boolean().optional().default(true).describe('Include officer/director records in response'),
+  include_registered_agent: z.boolean().optional().default(true).describe('Include registered agent name and address'),
 });
 
 export const OfficerSchema = z.object({
