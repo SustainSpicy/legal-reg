@@ -167,6 +167,8 @@ async function main(): Promise<void> {
 
   app.use('/mcp', mcpRateLimiter);
 
+  const INSTANCE_ID = process.env['HOSTNAME'] ?? `pid-${process.pid}`;
+
   // POST — initialize (no session header) creates a new session.
   // Subsequent tool calls include mcp-session-id to reuse the transport.
   app.post('/mcp', async (req, res) => {
@@ -174,7 +176,11 @@ async function main(): Promise<void> {
 
     if (sessionId) {
       const session = sessions.get(sessionId);
-      if (!session) { res.status(404).json({ error: 'Session not found or expired' }); return; }
+      if (!session) {
+        logger.warn({ sessionId, instance: INSTANCE_ID }, 'MCP session not found — possible cross-instance request');
+        res.status(404).json({ error: 'Session not found or expired' });
+        return;
+      }
       session.lastActivity = Date.now();
       await session.transport.handleRequest(req, res, req.body);
       return;
@@ -217,7 +223,7 @@ async function main(): Promise<void> {
   // ---- Start server ----------------------------------------------------------
 
   const httpServer = app.listen(PORT, () => {
-    logger.info({ port: PORT }, 'CorpSignal MCP server started');
+    logger.info({ port: PORT, instance: INSTANCE_ID }, 'CorpSignal MCP server started');
     logger.info(`MCP endpoint:   http://localhost:${PORT}/mcp`);
     logger.info(`Health check:   http://localhost:${PORT}/health`);
   });
