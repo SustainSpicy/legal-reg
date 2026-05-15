@@ -86,9 +86,14 @@ export async function resolveEDGAREntity(entityName: string): Promise<EntityLook
   }
 
   // Pass 3: normalised contains match
-  if (!match) {
+  // Guard: skip if either side is empty (happens when a name consists entirely of
+  // legal suffixes like "International Holdings Ltd" → "") or too short to be meaningful.
+  // Without this guard, normQuery.includes("") is always true and matches the first
+  // ticker whose name normalises to empty, producing wrong results (e.g. Sea Ltd).
+  if (!match && normQuery.length >= 4) {
     for (const entry of Object.values(tickers)) {
       const normTitle = normaliseName(entry.title);
+      if (normTitle.length < 4) continue;
       if (normTitle.includes(normQuery) || normQuery.includes(normTitle)) {
         match = entry;
         break;
