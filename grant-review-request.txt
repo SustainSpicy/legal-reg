@@ -1,0 +1,241 @@
+To: grants@ctxprotocol.com
+Subject: CorpSignal MCP - Grant Review Submission
+
+---
+
+TOOL DETAILS
+------------
+
+Tool name: CorpSignal MCP
+
+Endpoint URL: https://corpsignal.vctry4real.dev/mcp
+
+Tool ID: 81dfac76-5ac2-4caf-8146-db92bbbe98c2
+
+GitHub repo: https://github.com/SustainSpicy/legal-reg
+
+Wallet address: [PASTE YOUR WALLET ADDRESS HERE]
+
+---
+
+5 MUST-WIN PROMPTS
+------------------
+
+PROMPT 1 - Entity lookup: active Delaware company
+"Is Stripe Inc registered as an active company in Delaware?"
+
+Tool called: entity_lookup
+Input:
+  entity_name: "Stripe Inc"
+  jurisdiction: "US-DE"
+  include_officers: true
+  include_registered_agent: true
+
+Expected evidence fields:
+  status           -> "active"
+  jurisdiction     -> "US-DE"
+  source           -> "delaware_sos"
+  canonical_name   -> exact registered name from DE SOS
+  registered_agent -> object with name and address fields
+  confidence       -> >= 0.85
+  data_freshness   -> "fresh"
+
+Expected response shape (answer_with_evidence):
+{
+  "entity_id": "corpsig_us_de_stripe_inc",
+  "canonical_name": "STRIPE, INC.",
+  "jurisdiction": "US-DE",
+  "status": "active",
+  "incorporated_at": "2011-...",
+  "registered_agent": { "name": "...", "address": "..." },
+  "officers": [...],
+  "source": "delaware_sos",
+  "source_url": "https://icis.corp.delaware.gov/...",
+  "freshness_secs": 0,
+  "confidence": 0.97,
+  "data_freshness": "fresh"
+}
+
+---
+
+PROMPT 2 - Sanctions screen: clean entity returns clear
+"Screen Barclays Bank PLC against all sanctions lists and tell me if it is clear."
+
+Tool called: sanctions_screen
+Input:
+  entity_name: "Barclays Bank PLC"
+  lists: ["OFAC_SDN", "OFAC_CONS", "FinCEN", "UN_1267", "EU_CFSP", "HM_TREASURY"]
+  fuzzy_threshold: 0.85
+
+Expected evidence fields:
+  clear            -> true
+  hits             -> [] (empty array)
+  lists_checked    -> all 6 lists present
+  screened_at      -> ISO 8601 timestamp
+  fuzzy_candidates -> array (may contain near-miss candidates)
+  data_freshness   -> "fresh"
+
+Expected response shape (answer_with_evidence):
+{
+  "entity_name": "Barclays Bank PLC",
+  "screened_at": "2026-...",
+  "clear": true,
+  "hits": [],
+  "fuzzy_candidates": [],
+  "lists_checked": ["OFAC_SDN", "OFAC_CONS", "FinCEN", "UN_1267", "EU_CFSP", "HM_TREASURY"],
+  "freshness_secs": 0,
+  "data_freshness": "fresh"
+}
+
+---
+
+PROMPT 3 - Compliance risk score: full factor breakdown
+"Give me a compliance risk score for Apple Inc in Delaware and show me every factor that contributed to the score."
+
+Tool called: compliance_risk_score
+Input:
+  entity_name: "Apple Inc"
+  jurisdiction: "US-DE"
+
+Expected evidence fields:
+  risk_score       -> number in range 0-1
+  risk_tier        -> one of "low", "medium", "high", "critical"
+  score_breakdown  -> array with 5 signal objects
+  formula_version  -> non-empty string (e.g. "1.1.0")
+  scored_at        -> ISO 8601 timestamp
+  data_freshness   -> "fresh"
+
+Each score_breakdown item must contain:
+  signal       -> named signal (e.g. "registration_status", "sanctions_clear", "jurisdiction_risk")
+  weight       -> number 0-1
+  contribution -> number (weighted delta to score)
+  source       -> non-empty string
+
+Expected response shape (answer_with_evidence):
+{
+  "entity_id": "corpsig_us_de_apple_inc",
+  "canonical_name": "Apple Inc.",
+  "jurisdiction": "US-DE",
+  "risk_score": 0.05,
+  "risk_tier": "low",
+  "score_breakdown": [
+    { "signal": "registration_status", "value": "active", "weight": 0.30, "contribution": 0.0, "source": "edgar" },
+    { "signal": "sanctions_clear", "value": true, "weight": 0.40, "contribution": 0.0, "source": "OFAC_SDN,OFAC_CONS,FinCEN,UN_1267,EU_CFSP,HM_TREASURY" },
+    { "signal": "officer_count", "value": 0, "weight": 0.10, "contribution": 0.05, "source": "edgar" },
+    { "signal": "data_freshness", "value": "fresh", "weight": 0.10, "contribution": 0.0, "source": "cache" },
+    { "signal": "jurisdiction_risk", "value": "US:standard", "weight": 0.10, "contribution": 0.0, "source": "fatf_v2024_10+ofac" }
+  ],
+  "formula_version": "1.1.0",
+  "scored_at": "2026-...",
+  "freshness_secs": 0,
+  "data_freshness": "fresh"
+}
+
+---
+
+PROMPT 4 - Filings fetch: recent SEC EDGAR filings with type filter
+"Fetch the last 5 annual reports (10-K filings) for Apple Inc from SEC EDGAR."
+
+Tool called: filings_fetch
+Input:
+  entity_name: "Apple Inc"
+  jurisdiction: "US-DE"
+  filing_types: ["10-K"]
+  limit: 5
+  parse_financials: false
+
+Expected evidence fields:
+  filings          -> array with >= 1 item
+  filings[*].type  -> "10-K"
+  filings[*].date  -> ISO date string
+  filings[*].url   -> non-null SEC URL
+  filings[*].source -> "EDGAR"
+  total_available  -> integer > 0
+  data_freshness   -> "fresh"
+
+Expected response shape (answer_with_evidence):
+{
+  "entity_id": "corpsig_us_de_apple_inc",
+  "canonical_name": "Apple Inc.",
+  "jurisdiction": "US-DE",
+  "filings": [
+    {
+      "filing_id": "EDGAR_0000320193-25-000079",
+      "type": "10-K",
+      "date": "2025-10-31",
+      "description": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/...",
+      "source": "EDGAR"
+    }
+  ],
+  "financials": null,
+  "total_available": 40,
+  "source": "edgar",
+  "freshness_secs": 0,
+  "data_freshness": "fresh"
+}
+
+---
+
+PROMPT 5 - Full due diligence: multi-tool chain across entity, sanctions, and risk
+"Run a full due diligence check on Revolut Ltd in the UK: verify it is registered, screen it for sanctions, and give me a compliance risk score."
+
+Tools called (in sequence): entity_lookup, sanctions_screen, compliance_risk_score
+Input (entity_lookup):
+  entity_name: "Revolut Ltd"
+  jurisdiction: "GB"
+
+Expected evidence fields across all three tool calls:
+  entity_lookup:
+    status           -> "active"
+    source           -> "companies_house"
+    confidence       -> >= 0.90
+    data_freshness   -> "fresh"
+
+  sanctions_screen:
+    clear            -> true
+    lists_checked    -> all 6 lists
+
+  compliance_risk_score:
+    risk_score       -> number 0-1
+    risk_tier        -> "low" or "medium"
+    score_breakdown  -> 5 signals with weights and contributions
+
+Expected response shape (answer_with_evidence):
+Three structured objects returned in sequence or combined by the planner:
+- entity_lookup result confirming REVOLUT LTD is active in GB
+- sanctions_screen result confirming clear across all lists
+- compliance_risk_score result with risk_score, risk_tier, and full score_breakdown
+
+---
+
+QUERY MODE VALIDATION RESULTS (all 10 prompts passed, run 2026-05-15)
+----------------------------------------------------------------------
+
+All 10 canonical test prompts passed with toolCalls >= 1 and zero deterministic failures.
+Zero retries, zero self-healing loops.
+Average cost per query: $0.014 USD.
+
+Summary:
+  P1  entity_lookup (happy-path)         toolCalls=1  PASS
+  P2  entity_lookup (discovery, UK)      toolCalls=1  PASS
+  P3  sanctions_screen (happy-path)      toolCalls=1  PASS
+  P4  compliance_risk_score (compare 2)  toolCalls=2  PASS
+  P5  filings_fetch (filtered)           toolCalls=1  PASS
+  P6  multi-tool due diligence           toolCalls=3  PASS
+  P7  beneficial_owners (UK PSC)         toolCalls=1  PASS
+  P8  entity_lookup (edge case)          toolCalls=1  PASS
+  P9  filings_fetch + financials         toolCalls=2  PASS
+  P10 entity_lookup (Amazon)             toolCalls=1  PASS
+
+---
+
+PROTOCOL COMPLIANCE SUMMARY
+----------------------------
+
+outputSchema:          defined on all 5 tools
+_meta:                 surface, queryEligible, latencyClass, pricing, rateLimit set on all 5 tools
+structuredContent:     returned on all response paths including error paths
+createContextMiddleware: integrated (production mode only)
+Data Broker Standard:  deterministic=true, auditFields defined on all tools
+Session management:    stateful (mcp-session-id), single replica deployment

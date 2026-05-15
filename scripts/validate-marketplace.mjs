@@ -119,13 +119,16 @@ async function runPrompt(entry) {
   }
   const durationMs = Date.now() - start;
 
-  const responseText = answer?.answer ?? answer?.text ?? JSON.stringify(answer).slice(0, 500);
+  // ctx SDK v0.10: response is at answer.response, trace summary at answer.developerTrace.summary
+  const responseText = answer?.response ?? answer?.answer ?? answer?.text ?? JSON.stringify(answer).slice(0, 500);
   const failureMarkers = checkDeterministicFailure(responseText);
 
-  const trace = answer?.developerTrace ?? answer?.developer_trace;
-  const toolCalls = trace?.toolCalls ?? trace?.tool_calls ?? 0;
-  const retryCount = trace?.retryCount ?? trace?.retry_count ?? 0;
-  const selfHealCount = trace?.selfHealCount ?? trace?.self_heal_count ?? 0;
+  const traceSummary = answer?.developerTrace?.summary ?? {};
+  const toolCalls = traceSummary.toolCalls ?? 0;
+  const retryCount = traceSummary.retryCount ?? 0;
+  const selfHealCount = traceSummary.selfHealCount ?? 0;
+  const toolsUsed = (answer?.toolsUsed ?? []).map(t => t.name ?? t);
+
   const traceIssues = [];
   if (toolCalls === 0) traceIssues.push('Zero tool calls — tool was never invoked');
   if (retryCount > 3) traceIssues.push(`High retry count: ${retryCount}`);
@@ -138,8 +141,8 @@ async function runPrompt(entry) {
     pass,
     durationMs,
     responseText: responseText.slice(0, 400),
-    cost: answer?.cost?.totalCostUsd ?? answer?.cost ?? null,
-    toolsUsed: answer?.toolsUsed ?? answer?.tools_used ?? [],
+    cost: answer?.cost?.totalCostUsd ?? null,
+    toolsUsed,
     trace: { toolCalls, retryCount, selfHealCount },
     failureMarkers,
     traceIssues,
