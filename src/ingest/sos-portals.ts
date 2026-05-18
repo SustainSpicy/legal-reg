@@ -16,7 +16,7 @@ const ENTITY_TTL_SECS = 14400; // 4 hours
 const WARM_ENTITIES: Array<{ name: string; jurisdiction: string }> = [
   // Core implemented states
   { name: 'Apple Inc', jurisdiction: 'US-DE' },
-  { name: 'Microsoft Corporation', jurisdiction: 'US-DE' },
+  { name: 'Microsoft Corporation', jurisdiction: 'US-WA' },
   { name: 'Amazon.com Inc', jurisdiction: 'US-DE' },
   { name: 'Google LLC', jurisdiction: 'US-DE' },
   { name: 'Tesla Inc', jurisdiction: 'US-DE' },

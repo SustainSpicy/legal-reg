@@ -1,5 +1,5 @@
 import { normaliseName, similarityScore, soundex } from './name-normaliser.js';
-import { getCached, setCache, entityCacheKey, addToEntityWatchlist } from '../cache/helpers.js';
+import { getCached, setCache, deleteCache, entityCacheKey, addToEntityWatchlist } from '../cache/helpers.js';
 import type { EntityLookupOutputType } from '../schemas/entity.js';
 import { lookupSOSEntity, SCRAPE_ONLY_STATES } from '../ingest/sources/sos-portals.js';
 import { resolveUKEntity } from '../ingest/sources/companies-house.js';
@@ -90,11 +90,25 @@ export async function resolveEntityFromCache(
   // Try exact cache key first
   const key = entityCacheKey(jurisdiction, entityName);
   const cached = await getCached<EntityLookupOutputType>(key);
-  if (cached) return cached;
+  if (cached) {
+    // Evict entries where old EDGAR fallback wrote a mismatched jurisdiction
+    // (e.g. Microsoft US-WA stored under the entity:us-de: key). Returning
+    // wrong-jurisdiction data here would be a silent data lie to the caller.
+    if (cached.jurisdiction !== jurisdiction) {
+      await deleteCache(key);
+      return null;
+    }
+    return cached;
+  }
 
   // Try canonical ID lookup
   const canonicalId = generateEntityId(jurisdiction, entityName);
   const byId = await getCached<EntityLookupOutputType>(`entity:id:${canonicalId}`);
+  if (byId && byId.jurisdiction !== jurisdiction) {
+    // Same eviction logic for the id-keyed copy
+    await deleteCache(`entity:id:${canonicalId}`);
+    return null;
+  }
   if (byId) return byId;
 
   return null;
