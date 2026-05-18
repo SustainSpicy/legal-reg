@@ -99,7 +99,15 @@ export function registerComplianceRiskScore(server: McpServer): void {
 
       const registrationScore = entity.status === 'active' ? 0 : 1;
       const sanctionsClearScore = sanctionsResult.hits.length > 0 ? 1 : 0;
-      const officerScore = entity.officers.length > 0 ? 0 : 0.5;
+      // officer_count is only a meaningful signal for sources that actually expose
+      // officer data. EDGAR Submissions API and OpenCorporates free tier return
+      // officers:[] for every entity regardless of reality — absence ≠ risk.
+      // Only apply the 0.5 penalty when source is a SOS portal (which publishes
+      // officer/director data) and officers are still empty.
+      const sourceExposesOfficers = !entity.source.startsWith('edgar') &&
+        !entity.source.startsWith('opencorporates') &&
+        entity.source !== 'companies_house';
+      const officerScore = (!sourceExposesOfficers || entity.officers.length > 0) ? 0 : 0.5;
       const freshnessScore = entity.data_freshness === 'stale' ? 0.3 : 0;
 
       // Use iso2 code for jurisdiction risk — strip 'US-' prefix for US states

@@ -1,250 +1,53 @@
 // Run once on deploy: npx ts-node --esm scripts/seed-smoke-tests.ts
-// Pre-seeds the Redis cache with known deterministic entities so the
-// Context Protocol deep validation system gets consistent results
-// without hitting live upstream sources during review.
+//
+// Seeds ONLY synthetic / fake test entities into Redis so the smoke test
+// suite has deterministic data without relying on live upstream sources.
+//
+// IMPORTANT: Do NOT seed real companies here. Real entities (Apple, Microsoft,
+// Barclays, etc.) must come from live ingest (EDGAR, OpenCorporates, Companies
+// House) so that production queries reflect actual registration data.
+// Seeding real companies with static officer/agent data causes stale records
+// to be served in place of live data.
 
 import { connectRedis } from '../src/cache/client.js';
 import { setCache } from '../src/cache/helpers.js';
 
 await connectRedis();
 
-// --- entity_lookup smoke test entities ---
+// ---------------------------------------------------------------------------
+// entity_lookup — synthetic Delaware LLC
+// ---------------------------------------------------------------------------
+// "Acme Holdings LLC" is a fictional entity used exclusively for smoke tests.
+// We write both the name-based key and the entity:id: reverse-index key so
+// downstream tools (compliance, filings, bowners) can look it up by entity_id.
 
-await setCache('entity:us-de:acme holdings llc', {
+const acmeEntity = {
   entity_id: 'corpsig_us_de_acme_holdings',
   canonical_name: 'Acme Holdings LLC',
   jurisdiction: 'US-DE',
   status: 'active',
   incorporated_at: '2015-03-12',
-  registered_agent: { name: 'CT Corp', address: '1209 Orange St, Wilmington, DE 19801' },
+  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
   officers: [
     { name: 'Jane Smith', role: 'President', since: '2015-03-12' },
     { name: 'John Doe', role: 'Secretary', since: '2018-06-01' },
   ],
   source: 'delaware_sos',
   source_url: 'https://icis.corp.delaware.gov',
-  freshness_secs: 3600,
+  freshness_secs: 0,
   confidence: 0.99,
   data_freshness: 'fresh',
-}, 86400);
+};
 
-await setCache('entity:us-de:apple inc', {
-  entity_id: 'corpsig_us_de_apple_inc',
-  canonical_name: 'Apple Inc.',
-  jurisdiction: 'US-DE',
-  status: 'active',
-  incorporated_at: '1977-01-03',
-  registered_agent: { name: 'CT Corp', address: '1209 Orange St, Wilmington, DE 19801' },
-  officers: [],
-  source: 'delaware_sos',
-  source_url: 'https://icis.corp.delaware.gov',
-  freshness_secs: 3600,
-  confidence: 0.99,
-  data_freshness: 'fresh',
-}, 86400);
+await setCache('entity:us-de:acme holdings llc', acmeEntity, 86400);
+// Reverse-index so entity_id-only calls to compliance/filings/bowners pass the guard
+await setCache('entity:id:corpsig_us_de_acme_holdings', acmeEntity, 86400);
 
-// --- Additional real Delaware-incorporated entities (public companies, EDGAR-sourced) ---
+// ---------------------------------------------------------------------------
+// sanctions_screen
+// ---------------------------------------------------------------------------
 
-await setCache('entity:us-de:microsoft corporation', {
-  entity_id: 'corpsig_us_de_microsoft',
-  canonical_name: 'MICROSOFT CORP',
-  jurisdiction: 'US-DE',
-  status: 'active',
-  incorporated_at: null,
-  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
-  officers: [],
-  source: 'edgar',
-  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=789019',
-  freshness_secs: 0,
-  confidence: 0.85,
-  data_freshness: 'fresh',
-}, 86400);
-
-await setCache('entity:us-de:amazon.com inc', {
-  entity_id: 'corpsig_us_de_amazon_com',
-  canonical_name: 'AMAZON COM INC',
-  jurisdiction: 'US-DE',
-  status: 'active',
-  incorporated_at: null,
-  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
-  officers: [],
-  source: 'edgar',
-  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1018724',
-  freshness_secs: 0,
-  confidence: 0.85,
-  data_freshness: 'fresh',
-}, 86400);
-
-await setCache('entity:us-de:meta platforms inc', {
-  entity_id: 'corpsig_us_de_meta_platforms',
-  canonical_name: 'Meta Platforms, Inc.',
-  jurisdiction: 'US-DE',
-  status: 'active',
-  incorporated_at: null,
-  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
-  officers: [],
-  source: 'edgar',
-  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1326801',
-  freshness_secs: 0,
-  confidence: 0.85,
-  data_freshness: 'fresh',
-}, 86400);
-
-await setCache('entity:us-de:alphabet inc', {
-  entity_id: 'corpsig_us_de_alphabet',
-  canonical_name: 'Alphabet Inc.',
-  jurisdiction: 'US-DE',
-  status: 'active',
-  incorporated_at: null,
-  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
-  officers: [],
-  source: 'edgar',
-  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1652044',
-  freshness_secs: 0,
-  confidence: 0.85,
-  data_freshness: 'fresh',
-}, 86400);
-
-await setCache('entity:us-de:tesla inc', {
-  entity_id: 'corpsig_us_de_tesla',
-  canonical_name: 'Tesla, Inc.',
-  jurisdiction: 'US-DE',
-  status: 'active',
-  incorporated_at: null,
-  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
-  officers: [],
-  source: 'edgar',
-  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1318605',
-  freshness_secs: 0,
-  confidence: 0.85,
-  data_freshness: 'fresh',
-}, 86400);
-
-await setCache('entity:us-de:jpmorgan chase & co', {
-  entity_id: 'corpsig_us_de_jpmorgan_chase',
-  canonical_name: 'JPMORGAN CHASE & CO',
-  jurisdiction: 'US-DE',
-  status: 'active',
-  incorporated_at: null,
-  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
-  officers: [],
-  source: 'edgar',
-  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=19617',
-  freshness_secs: 0,
-  confidence: 0.85,
-  data_freshness: 'fresh',
-}, 86400);
-
-await setCache('entity:us-de:pfizer inc', {
-  entity_id: 'corpsig_us_de_pfizer',
-  canonical_name: 'PFIZER INC',
-  jurisdiction: 'US-DE',
-  status: 'active',
-  incorporated_at: null,
-  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
-  officers: [],
-  source: 'edgar',
-  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=78003',
-  freshness_secs: 0,
-  confidence: 0.85,
-  data_freshness: 'fresh',
-}, 86400);
-
-await setCache('entity:us-de:walmart inc', {
-  entity_id: 'corpsig_us_de_walmart',
-  canonical_name: 'Walmart Inc.',
-  jurisdiction: 'US-DE',
-  status: 'active',
-  incorporated_at: null,
-  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
-  officers: [],
-  source: 'edgar',
-  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=104169',
-  freshness_secs: 0,
-  confidence: 0.85,
-  data_freshness: 'fresh',
-}, 86400);
-
-await setCache('entity:us-de:netflix inc', {
-  entity_id: 'corpsig_us_de_netflix',
-  canonical_name: 'NETFLIX INC',
-  jurisdiction: 'US-DE',
-  status: 'active',
-  incorporated_at: null,
-  registered_agent: { name: 'National Registered Agents Inc', address: '160 Greentree Dr Ste 101, Dover, DE 19904' },
-  officers: [],
-  source: 'edgar',
-  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1065280',
-  freshness_secs: 0,
-  confidence: 0.85,
-  data_freshness: 'fresh',
-}, 86400);
-
-await setCache('entity:us-de:chevron corporation', {
-  entity_id: 'corpsig_us_de_chevron',
-  canonical_name: 'CHEVRON CORP',
-  jurisdiction: 'US-DE',
-  status: 'active',
-  incorporated_at: null,
-  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
-  officers: [],
-  source: 'edgar',
-  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=93410',
-  freshness_secs: 0,
-  confidence: 0.85,
-  data_freshness: 'fresh',
-}, 86400);
-
-await setCache('entity:us-de:goldman sachs group inc', {
-  entity_id: 'corpsig_us_de_goldman_sachs',
-  canonical_name: 'GOLDMAN SACHS GROUP INC',
-  jurisdiction: 'US-DE',
-  status: 'active',
-  incorporated_at: null,
-  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
-  officers: [],
-  source: 'edgar',
-  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=886982',
-  freshness_secs: 0,
-  confidence: 0.85,
-  data_freshness: 'fresh',
-}, 86400);
-
-await setCache('entity:us-de:berkshire hathaway inc', {
-  entity_id: 'corpsig_us_de_berkshire_hathaway',
-  canonical_name: 'BERKSHIRE HATHAWAY INC',
-  jurisdiction: 'US-DE',
-  status: 'active',
-  incorporated_at: null,
-  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
-  officers: [],
-  source: 'edgar',
-  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1067983',
-  freshness_secs: 0,
-  confidence: 0.85,
-  data_freshness: 'fresh',
-}, 86400);
-
-await setCache('entity:gb:barclays bank plc', {
-  entity_id: 'corpsig_gb_barclays_bank',
-  canonical_name: 'Barclays Bank PLC',
-  jurisdiction: 'GB',
-  status: 'active',
-  incorporated_at: '1896-07-20',
-  registered_agent: { name: 'Registered Office', address: '1 Churchill Place, London E14 5HP' },
-  officers: [
-    { name: 'C.S. Venkatakrishnan', role: 'director', since: '2021-11-01' },
-  ],
-  source: 'companies_house',
-  source_url: 'https://find-and-update.company-information.service.gov.uk/company/01026167',
-  freshness_secs: 3600,
-  confidence: 0.99,
-  data_freshness: 'fresh',
-}, 86400);
-
-// --- sanctions_screen smoke test entities ---
-
-// Known OFAC hit — "Specially Designated Nationals LLC" is a synthetic test entity
+// Synthetic OFAC hit — name mirrors the OFAC SDN list name format
 await setCache('sanctions:screen:specially designated nationals llc', {
   entity_name: 'Specially Designated Nationals LLC',
   screened_at: new Date().toISOString(),
@@ -266,9 +69,9 @@ await setCache('sanctions:screen:specially designated nationals llc', {
   data_freshness: 'fresh',
 }, 86400);
 
-// Known clean entity
-await setCache('sanctions:screen:apple inc', {
-  entity_name: 'Apple Inc',
+// Known-clean entity
+await setCache('sanctions:screen:acme holdings llc', {
+  entity_name: 'Acme Holdings LLC',
   screened_at: new Date().toISOString(),
   clear: true,
   hits: [],
@@ -278,7 +81,9 @@ await setCache('sanctions:screen:apple inc', {
   data_freshness: 'fresh',
 }, 86400);
 
-// --- compliance_risk_score smoke test ---
+// ---------------------------------------------------------------------------
+// compliance_risk_score — uses Acme entity above (2 officers → no officer penalty)
+// ---------------------------------------------------------------------------
 
 await setCache('compliance:corpsig_us_de_acme_holdings', {
   entity_id: 'corpsig_us_de_acme_holdings',
@@ -287,69 +92,73 @@ await setCache('compliance:corpsig_us_de_acme_holdings', {
   risk_score: 0.05,
   risk_tier: 'low',
   score_breakdown: [
-    { signal: 'registration_status', value: 'active', weight: 0.30, contribution: 0.0, source: 'delaware_sos' },
-    { signal: 'sanctions_clear', value: true, weight: 0.40, contribution: 0.0, source: 'OFAC_SDN,OFAC_CONS,FinCEN,UN_1267,EU_CFSP,HM_TREASURY' },
-    { signal: 'officer_count', value: 2, weight: 0.10, contribution: 0.0, source: 'delaware_sos' },
-    { signal: 'data_freshness', value: 'fresh', weight: 0.10, contribution: 0.0, source: 'cache' },
-    { signal: 'jurisdiction_risk', value: 'US-DE:standard', weight: 0.10, contribution: 0.0, source: 'fatf_v2024_10+ofac' },
+    { signal: 'registration_status', value: 'active',   weight: 0.30, contribution: 0.00, source: 'delaware_sos' },
+    { signal: 'sanctions_clear',     value: true,        weight: 0.40, contribution: 0.00, source: 'OFAC_SDN,OFAC_CONS,FinCEN,UN_1267,EU_CFSP,HM_TREASURY' },
+    { signal: 'officer_count',       value: 2,           weight: 0.10, contribution: 0.00, source: 'delaware_sos' },
+    { signal: 'data_freshness',      value: 'fresh',     weight: 0.10, contribution: 0.00, source: 'cache' },
+    { signal: 'jurisdiction_risk',   value: 'US-DE:standard', weight: 0.10, contribution: 0.05, source: 'fatf_v2024_10+ofac' },
   ],
   formula_version: '1.1.0',
   scored_at: new Date().toISOString(),
-  freshness_secs: 3600,
+  freshness_secs: 0,
   data_freshness: 'fresh',
 }, 86400);
 
-// --- filings_fetch smoke test (Apple Inc — EDGAR) ---
+// ---------------------------------------------------------------------------
+// filings_fetch — synthetic EDGAR-style entries for Acme
+// ---------------------------------------------------------------------------
 
-await setCache('filings:corpsig_us_de_apple_inc', {
-  entity_id: 'corpsig_us_de_apple_inc',
-  canonical_name: 'Apple Inc.',
+await setCache('filings:corpsig_us_de_acme_holdings', {
+  entity_id: 'corpsig_us_de_acme_holdings',
+  canonical_name: 'Acme Holdings LLC',
   jurisdiction: 'US-DE',
   filings: [
     {
-      filing_id: 'EDGAR_0000320193-24-000123',
+      filing_id: 'ACME_SMOKE_2024_10K',
       type: '10-K',
-      date: '2024-10-25',
-      description: null,
-      url: 'https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/',
+      date: '2024-03-31',
+      description: 'Annual report',
+      url: null,
       source: 'EDGAR',
     },
     {
-      filing_id: 'EDGAR_0000320193-24-000081',
-      type: '10-Q',
-      date: '2024-08-02',
-      description: null,
-      url: 'https://www.sec.gov/Archives/edgar/data/320193/000032019324000081/',
+      filing_id: 'ACME_SMOKE_2023_10K',
+      type: '10-K',
+      date: '2023-03-31',
+      description: 'Annual report',
+      url: null,
       source: 'EDGAR',
     },
   ],
   financials: null,
-  total_available: 124,
+  total_available: 2,
   source: 'edgar',
   freshness_secs: 0,
   data_freshness: 'fresh',
 }, 86400);
 
-// --- beneficial_owners smoke test (Barclays PSC — UK) ---
+// ---------------------------------------------------------------------------
+// beneficial_owners — Acme Holdings LLC (small private LLC, CTA-exempt)
+// ---------------------------------------------------------------------------
 
-await setCache('bowners:corpsig_gb_barclays_bank', {
-  entity_id: 'corpsig_gb_barclays_bank',
-  canonical_name: 'Barclays Bank PLC',
-  jurisdiction: 'GB',
+await setCache('bowners:corpsig_us_de_acme_holdings', {
+  entity_id: 'corpsig_us_de_acme_holdings',
+  canonical_name: 'Acme Holdings LLC',
+  jurisdiction: 'US-DE',
   owners: [
     {
       owner_id: null,
-      name: 'Barclays PLC',
+      name: 'Jane Smith',
       ownership_pct: 100,
       control_type: 'ownership',
       indirect: false,
-      nationality: 'GB',
-      source: 'UK_PSC',
-      notified_on: '2016-04-06',
+      nationality: 'US',
+      source: 'GLEIF_LEI',
+      notified_on: '2015-03-12',
     },
   ],
-  disclosure_status: 'full',
-  source: 'UK_PSC',
+  disclosure_status: 'partial',
+  source: 'GLEIF_LEI',
   freshness_secs: 0,
   data_freshness: 'fresh',
 }, 86400);
