@@ -94,7 +94,10 @@ export async function refreshEntityCache(
       if (!result) {
         result = await resolveEDGAREntity(entityName);
         if (result && result.jurisdiction !== jurisdiction) {
-          result = { ...result, jurisdiction };
+          // EDGAR returned an entity registered in a different state — don't override
+          // the jurisdiction field, as that would give misleading data (e.g. Microsoft
+          // returning US-WA data when queried for US-DE).
+          result = null;
         }
       }
     }
@@ -112,7 +115,7 @@ export async function refreshEntityCache(
   return null;
 }
 
-async function ingestHighVolumeStates(): Promise<void> {
+export async function ingestHighVolumeStates(): Promise<void> {
   // Build the full warming list: static seeds + top-5 from each jurisdiction's watchlist
   const entities = new Map<string, string>(); // key `jur:name` → dedup
 

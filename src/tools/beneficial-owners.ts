@@ -230,9 +230,14 @@ export function registerBeneficialOwners(server: McpServer): void {
       },
     },
     async (args) => {
-      const { entity_name = 'Acme Holdings LLC', jurisdiction = 'US-DE', entity_id } = args;
+      const { entity_name, jurisdiction, entity_id } = args;
 
-      const canonicalId = entity_id ?? generateEntityId(jurisdiction, entity_name);
+      if (!entity_id && !entity_name) {
+        return structuredError('ENTITY_NOT_FOUND', 'Provide either entity_id or entity_name to look up beneficial owners');
+      }
+
+      const resolvedJurisdiction = jurisdiction ?? 'US-DE';
+      const canonicalId = entity_id ?? generateEntityId(resolvedJurisdiction, entity_name!);
       const cacheKey = beneficialOwnersCacheKey(canonicalId);
       const cached = await getCached<BeneficialOwnersOutputType>(cacheKey);
       if (cached) {
@@ -246,7 +251,10 @@ export function registerBeneficialOwners(server: McpServer): void {
       let disclosureStatus: BeneficialOwnersOutputType['disclosure_status'] = 'unavailable';
       let source = 'unknown';
 
-      if (jurisdiction === 'GB') {
+      if (resolvedJurisdiction === 'GB') {
+        if (!entity_name) {
+          return structuredError('ENTITY_NOT_FOUND', 'entity_name is required for UK beneficial ownership lookup');
+        }
         // Resolve real company number via Companies House search (not canonical ID)
         const companyNumber = await resolveCompanyNumber(entity_name);
         if (!companyNumber) {
@@ -255,23 +263,24 @@ export function registerBeneficialOwners(server: McpServer): void {
         owners = await fetchUKPSC(companyNumber);
         source = 'UK_PSC';
         disclosureStatus = owners.length > 0 ? 'full' : 'unavailable';
-      } else if (jurisdiction.startsWith('US') || jurisdiction === 'CA' || jurisdiction.startsWith('CA-') || jurisdiction === 'global') {
+      } else if (resolvedJurisdiction.startsWith('US') || resolvedJurisdiction === 'CA' || resolvedJurisdiction.startsWith('CA-') || resolvedJurisdiction === 'global') {
+        const lookupName = entity_name ?? canonicalId;
         // Primary: GLEIF LEI (structural parent relationships, global coverage)
-        const gleif = await fetchGLEIFOwners(entity_name);
+        const gleif = await fetchGLEIFOwners(lookupName);
         if (gleif.owners.length > 0) {
           owners = gleif.owners;
           disclosureStatus = gleif.disclosureStatus;
           source = 'GLEIF_LEI';
         } else {
           // Fallback: EDGAR Schedule 13G/D for US public companies
-          const edgarOwners = await fetchEDGARSchedule13Owners(entity_name);
+          const edgarOwners = await fetchEDGARSchedule13Owners(lookupName);
           if (edgarOwners.length > 0) {
             owners = edgarOwners;
             disclosureStatus = 'partial';
             source = 'EDGAR_PROXY';
           } else {
             // CTA-exempt small private businesses, or entity not in GLEIF/EDGAR
-            logger.info({ entity_name, canonicalId }, 'No ownership data found — entity may be a small private company not in GLEIF/EDGAR');
+            logger.info({ entity_name: lookupName, canonicalId }, 'No ownership data found — entity may be a small private company not in GLEIF/EDGAR');
             disclosureStatus = 'unavailable';
             source = 'none';
           }
@@ -279,14 +288,14 @@ export function registerBeneficialOwners(server: McpServer): void {
       } else {
         return structuredError(
           'BENEFICIAL_OWNERSHIP_UNAVAILABLE',
-          `Beneficial ownership data not available for jurisdiction '${jurisdiction}'. Supported: US (all states), GB, CA (all provinces).`,
+          `Beneficial ownership data not available for jurisdiction '${resolvedJurisdiction}'. Supported: US (all states), GB, CA (all provinces).`,
         );
       }
 
       const result: BeneficialOwnersOutputType = {
         entity_id: canonicalId,
-        canonical_name: entity_name,
-        jurisdiction,
+        canonical_name: entity_name ?? canonicalId,
+        jurisdiction: resolvedJurisdiction,
         owners,
         disclosure_status: disclosureStatus,
         source,

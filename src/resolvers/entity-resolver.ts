@@ -122,7 +122,15 @@ export async function resolveEntityUpstream(
       } else {
         // API states: SOS portal first, EDGAR fallback
         live = await lookupSOSEntity(entityName, jurisdiction);
-        if (!live) live = await resolveEDGAREntity(entityName);
+        if (!live) {
+          const edgar = await resolveEDGAREntity(entityName);
+          // Only accept EDGAR result when its jurisdiction matches the query.
+          // EDGAR encodes the state-of-incorporation, so a Microsoft query for
+          // US-DE would return US-WA — reject that rather than silently lying.
+          if (edgar && edgar.jurisdiction === jurisdiction) {
+            live = edgar;
+          }
+        }
       }
     }
   } catch (err) {

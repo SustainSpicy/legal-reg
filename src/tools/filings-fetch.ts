@@ -111,15 +111,20 @@ export function registerFilingsFetch(server: McpServer): void {
     },
     async (args) => {
       const {
-        entity_name = 'Apple Inc',
-        jurisdiction = 'US-DE',
+        entity_name,
+        jurisdiction,
         entity_id,
         filing_types,
         limit = 10,
         parse_financials = false,
       } = args;
 
-      const canonicalId = entity_id ?? generateEntityId(jurisdiction, entity_name);
+      if (!entity_id && !entity_name) {
+        return structuredError('ENTITY_NOT_FOUND', 'Provide either entity_id or entity_name to fetch filings');
+      }
+
+      const resolvedJurisdiction = jurisdiction ?? 'US-DE';
+      const canonicalId = entity_id ?? generateEntityId(resolvedJurisdiction, entity_name!);
       // Separate cache keys for with/without financials to avoid serving
       // cached null-financials when parse_financials=true
       const cacheKey = filingsCacheKey(canonicalId) + (parse_financials ? ':fin' : '');
@@ -134,15 +139,20 @@ export function registerFilingsFetch(server: McpServer): void {
         };
       }
 
-      const entityData = await resolveEntityFromCache(entity_name, jurisdiction);
-      const canonicalName = entityData?.canonical_name ?? entity_name;
+      const entityData = entity_name
+        ? await resolveEntityFromCache(entity_name, resolvedJurisdiction)
+        : null;
+      const canonicalName = entityData?.canonical_name ?? entity_name ?? canonicalId;
 
       let filings: FilingItemType[] = [];
       let source = 'unknown';
       let totalAvailable = 0;
       let financials: FilingsFetchOutputType['financials'] = null;
 
-      if (jurisdiction === 'GB') {
+      if (resolvedJurisdiction === 'GB') {
+        if (!entity_name) {
+          return structuredError('ENTITY_NOT_FOUND', 'entity_name is required for UK filings lookup');
+        }
         // Companies House filings
         const companyNumber = await resolveCompanyNumber(entity_name);
         if (!companyNumber) {
@@ -153,7 +163,10 @@ export function registerFilingsFetch(server: McpServer): void {
         filings = chFilings;
         totalAvailable = chTotal;
         source = 'companies_house';
-      } else if (jurisdiction === 'CA' || jurisdiction.startsWith('CA-')) {
+      } else if (resolvedJurisdiction === 'CA' || resolvedJurisdiction.startsWith('CA-')) {
+        if (!entity_name) {
+          return structuredError('ENTITY_NOT_FOUND', 'entity_name is required for SEDAR+ filings lookup');
+        }
         // SEDAR+ for Canadian public companies
         const { filings: sedarFilings, totalAvailable: sedarTotal } =
           await fetchSEDARFilings(entity_name, limit, filing_types);
@@ -164,8 +177,8 @@ export function registerFilingsFetch(server: McpServer): void {
         totalAvailable = sedarTotal;
         source = 'sedar';
       } else {
-        // EDGAR for US public companies
-        const edgarEntity = await resolveEDGAREntity(entity_name);
+        // EDGAR for US public companies — requires entity_name for live lookup
+        const edgarEntity = entity_name ? await resolveEDGAREntity(entity_name) : null;
         if (edgarEntity) {
           const cikMatch = edgarEntity.source_url?.match(/CIK=(\d+)/);
           const cik = cikMatch?.[1];
@@ -205,13 +218,13 @@ export function registerFilingsFetch(server: McpServer): void {
       }
 
       if (filings.length === 0) {
-        return structuredError('ENTITY_NOT_FOUND', `No filings found for '${entity_name}' in ${jurisdiction}`);
+        return structuredError('ENTITY_NOT_FOUND', `No filings found for '${entity_name ?? canonicalId}' in ${resolvedJurisdiction}`);
       }
 
       const result: FilingsFetchOutputType = {
         entity_id: canonicalId,
         canonical_name: canonicalName,
-        jurisdiction,
+        jurisdiction: resolvedJurisdiction,
         filings,
         financials,
         total_available: totalAvailable,

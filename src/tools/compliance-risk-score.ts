@@ -9,6 +9,7 @@ import {
 import { screenEntity } from '../resolvers/sanctions-matcher.js';
 import { SANCTIONS_LISTS } from '../schemas/sanctions.js';
 import type { ComplianceRiskOutputType } from '../schemas/compliance.js';
+import { structuredError } from '../errors/codes.js';
 import {
   getJurisdictionRiskLevel,
   JURISDICTION_RISK_SCORE,
@@ -56,9 +57,14 @@ export function registerComplianceRiskScore(server: McpServer): void {
       },
     },
     async (args) => {
-      const { entity_name, jurisdiction = 'US-DE', entity_id } = args;
+      const { entity_name, jurisdiction, entity_id } = args;
 
-      const canonicalId = entity_id ?? generateEntityId(jurisdiction, entity_name);
+      if (!entity_id && !entity_name) {
+        return structuredError('ENTITY_NOT_FOUND', 'Provide either entity_id or entity_name to score compliance risk');
+      }
+
+      const resolvedJurisdiction = jurisdiction ?? 'US-DE';
+      const canonicalId = entity_id ?? generateEntityId(resolvedJurisdiction, entity_name!);
       const cacheKey = complianceCacheKey(canonicalId);
       const cached = await getCached<ComplianceRiskOutputType>(cacheKey);
       if (cached) {
@@ -70,10 +76,16 @@ export function registerComplianceRiskScore(server: McpServer): void {
 
       const [entity, sanctionsResult] = await Promise.all([
         (async () => {
-          const c = await resolveEntityFromCache(entity_name, jurisdiction);
-          return c ?? resolveEntityUpstream(entity_name, jurisdiction);
+          if (!entity_name) {
+            // entity_id provided without entity_name — look up from entity cache
+            const cached = await getCached<import('../schemas/entity.js').EntityLookupOutputType>(`entity:id:${canonicalId}`);
+            if (cached) return cached;
+            return resolveEntityUpstream(canonicalId, resolvedJurisdiction);
+          }
+          const c = await resolveEntityFromCache(entity_name, resolvedJurisdiction);
+          return c ?? resolveEntityUpstream(entity_name, resolvedJurisdiction);
         })(),
-        screenEntity(entity_name, [...SANCTIONS_LISTS], 0.85),
+        screenEntity(entity_name ?? entity_id!, [...SANCTIONS_LISTS], 0.85),
       ]);
 
       const registrationScore = entity.status === 'active' ? 0 : 1;
@@ -82,7 +94,7 @@ export function registerComplianceRiskScore(server: McpServer): void {
       const freshnessScore = entity.data_freshness === 'stale' ? 0.3 : 0;
 
       // Use iso2 code for jurisdiction risk — strip 'US-' prefix for US states
-      const iso2 = jurisdiction.includes('-') ? jurisdiction.split('-')[0]! : jurisdiction;
+      const iso2 = resolvedJurisdiction.includes('-') ? resolvedJurisdiction.split('-')[0]! : resolvedJurisdiction;
       const jurisdictionRiskLevel = getJurisdictionRiskLevel(iso2);
       const jurisdictionRiskScore = JURISDICTION_RISK_SCORE[jurisdictionRiskLevel];
 
@@ -117,7 +129,7 @@ export function registerComplianceRiskScore(server: McpServer): void {
         },
         {
           signal: 'jurisdiction_risk',
-          value: `${jurisdiction}:${jurisdictionRiskLevel}`,
+          value: `${resolvedJurisdiction}:${jurisdictionRiskLevel}`,
           weight: SIGNAL_WEIGHTS.jurisdiction_risk,
           contribution: jurisdictionRiskScore * SIGNAL_WEIGHTS.jurisdiction_risk,
           source: 'fatf_v2024_10+ofac',
@@ -129,7 +141,7 @@ export function registerComplianceRiskScore(server: McpServer): void {
       const result: ComplianceRiskOutputType = {
         entity_id: canonicalId,
         canonical_name: entity.canonical_name,
-        jurisdiction,
+        jurisdiction: resolvedJurisdiction,
         risk_score: Math.min(1, Math.max(0, riskScore)),
         risk_tier: riskTier(riskScore),
         score_breakdown: scoreBreakdown,

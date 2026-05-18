@@ -8,7 +8,7 @@ import { connectRedis, redis, isRedisConnected } from './cache/client.js';
 import { getCached, sanctionsCacheKey } from './cache/helpers.js';
 import { registerAllTools } from './tools/index.js';
 import { startSanctionsIngestCron, runSanctionsIngest } from './ingest/sanctions.js';
-import { startSOSIngestCron } from './ingest/sos-portals.js';
+import { startSOSIngestCron, ingestHighVolumeStates } from './ingest/sos-portals.js';
 import { startSOSScraperCron } from './ingest/sos-scraper.js';
 import { startCompaniesHouseCron, handleCompaniesHouseWebhook } from './ingest/companies-house.js';
 import { logger, httpLogger } from './logger.js';
@@ -76,6 +76,10 @@ async function main(): Promise<void> {
   startSOSIngestCron();
   startSOSScraperCron();
   startCompaniesHouseCron();
+
+  // Fire-and-forget: warm the entity cache on startup so the 50+ WARM_ENTITIES
+  // are available immediately rather than waiting up to 4 hours for the cron.
+  void ingestHighVolumeStates();
 
   const app = express();
 

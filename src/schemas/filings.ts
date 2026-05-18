@@ -9,12 +9,10 @@ export const FilingsFetchInput = z.object({
   entity_name: z
     .string()
     .optional()
-    .describe('Entity name — used if entity_id not provided')
-    .default('Apple Inc'),
+    .describe('Entity name — used if entity_id not provided'),
   jurisdiction: z
     .string()
     .optional()
-    .default('US-CA')
     .describe('Jurisdiction code — required when using entity_name'),
   filing_types: z
     .array(z.string())

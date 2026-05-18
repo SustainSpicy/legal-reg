@@ -43,6 +43,188 @@ await setCache('entity:us-de:apple inc', {
   data_freshness: 'fresh',
 }, 86400);
 
+// --- Additional real Delaware-incorporated entities (public companies, EDGAR-sourced) ---
+
+await setCache('entity:us-de:microsoft corporation', {
+  entity_id: 'corpsig_us_de_microsoft',
+  canonical_name: 'MICROSOFT CORP',
+  jurisdiction: 'US-DE',
+  status: 'active',
+  incorporated_at: null,
+  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
+  officers: [],
+  source: 'edgar',
+  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=789019',
+  freshness_secs: 0,
+  confidence: 0.85,
+  data_freshness: 'fresh',
+}, 86400);
+
+await setCache('entity:us-de:amazon.com inc', {
+  entity_id: 'corpsig_us_de_amazon_com',
+  canonical_name: 'AMAZON COM INC',
+  jurisdiction: 'US-DE',
+  status: 'active',
+  incorporated_at: null,
+  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
+  officers: [],
+  source: 'edgar',
+  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1018724',
+  freshness_secs: 0,
+  confidence: 0.85,
+  data_freshness: 'fresh',
+}, 86400);
+
+await setCache('entity:us-de:meta platforms inc', {
+  entity_id: 'corpsig_us_de_meta_platforms',
+  canonical_name: 'Meta Platforms, Inc.',
+  jurisdiction: 'US-DE',
+  status: 'active',
+  incorporated_at: null,
+  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
+  officers: [],
+  source: 'edgar',
+  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1326801',
+  freshness_secs: 0,
+  confidence: 0.85,
+  data_freshness: 'fresh',
+}, 86400);
+
+await setCache('entity:us-de:alphabet inc', {
+  entity_id: 'corpsig_us_de_alphabet',
+  canonical_name: 'Alphabet Inc.',
+  jurisdiction: 'US-DE',
+  status: 'active',
+  incorporated_at: null,
+  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
+  officers: [],
+  source: 'edgar',
+  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1652044',
+  freshness_secs: 0,
+  confidence: 0.85,
+  data_freshness: 'fresh',
+}, 86400);
+
+await setCache('entity:us-de:tesla inc', {
+  entity_id: 'corpsig_us_de_tesla',
+  canonical_name: 'Tesla, Inc.',
+  jurisdiction: 'US-DE',
+  status: 'active',
+  incorporated_at: null,
+  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
+  officers: [],
+  source: 'edgar',
+  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1318605',
+  freshness_secs: 0,
+  confidence: 0.85,
+  data_freshness: 'fresh',
+}, 86400);
+
+await setCache('entity:us-de:jpmorgan chase & co', {
+  entity_id: 'corpsig_us_de_jpmorgan_chase',
+  canonical_name: 'JPMORGAN CHASE & CO',
+  jurisdiction: 'US-DE',
+  status: 'active',
+  incorporated_at: null,
+  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
+  officers: [],
+  source: 'edgar',
+  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=19617',
+  freshness_secs: 0,
+  confidence: 0.85,
+  data_freshness: 'fresh',
+}, 86400);
+
+await setCache('entity:us-de:pfizer inc', {
+  entity_id: 'corpsig_us_de_pfizer',
+  canonical_name: 'PFIZER INC',
+  jurisdiction: 'US-DE',
+  status: 'active',
+  incorporated_at: null,
+  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
+  officers: [],
+  source: 'edgar',
+  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=78003',
+  freshness_secs: 0,
+  confidence: 0.85,
+  data_freshness: 'fresh',
+}, 86400);
+
+await setCache('entity:us-de:walmart inc', {
+  entity_id: 'corpsig_us_de_walmart',
+  canonical_name: 'Walmart Inc.',
+  jurisdiction: 'US-DE',
+  status: 'active',
+  incorporated_at: null,
+  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
+  officers: [],
+  source: 'edgar',
+  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=104169',
+  freshness_secs: 0,
+  confidence: 0.85,
+  data_freshness: 'fresh',
+}, 86400);
+
+await setCache('entity:us-de:netflix inc', {
+  entity_id: 'corpsig_us_de_netflix',
+  canonical_name: 'NETFLIX INC',
+  jurisdiction: 'US-DE',
+  status: 'active',
+  incorporated_at: null,
+  registered_agent: { name: 'National Registered Agents Inc', address: '160 Greentree Dr Ste 101, Dover, DE 19904' },
+  officers: [],
+  source: 'edgar',
+  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1065280',
+  freshness_secs: 0,
+  confidence: 0.85,
+  data_freshness: 'fresh',
+}, 86400);
+
+await setCache('entity:us-de:chevron corporation', {
+  entity_id: 'corpsig_us_de_chevron',
+  canonical_name: 'CHEVRON CORP',
+  jurisdiction: 'US-DE',
+  status: 'active',
+  incorporated_at: null,
+  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
+  officers: [],
+  source: 'edgar',
+  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=93410',
+  freshness_secs: 0,
+  confidence: 0.85,
+  data_freshness: 'fresh',
+}, 86400);
+
+await setCache('entity:us-de:goldman sachs group inc', {
+  entity_id: 'corpsig_us_de_goldman_sachs',
+  canonical_name: 'GOLDMAN SACHS GROUP INC',
+  jurisdiction: 'US-DE',
+  status: 'active',
+  incorporated_at: null,
+  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
+  officers: [],
+  source: 'edgar',
+  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=886982',
+  freshness_secs: 0,
+  confidence: 0.85,
+  data_freshness: 'fresh',
+}, 86400);
+
+await setCache('entity:us-de:berkshire hathaway inc', {
+  entity_id: 'corpsig_us_de_berkshire_hathaway',
+  canonical_name: 'BERKSHIRE HATHAWAY INC',
+  jurisdiction: 'US-DE',
+  status: 'active',
+  incorporated_at: null,
+  registered_agent: { name: 'CT Corporation System', address: '1209 Orange St, Wilmington, DE 19801' },
+  officers: [],
+  source: 'edgar',
+  source_url: 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=1067983',
+  freshness_secs: 0,
+  confidence: 0.85,
+  data_freshness: 'fresh',
+}, 86400);
+
 await setCache('entity:gb:barclays bank plc', {
   entity_id: 'corpsig_gb_barclays_bank',
   canonical_name: 'Barclays Bank PLC',

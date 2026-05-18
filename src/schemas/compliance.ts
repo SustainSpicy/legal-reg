@@ -4,12 +4,11 @@ import { ErrorOutputSchema } from '../errors/codes.js';
 export const ComplianceRiskInput = z.object({
   entity_name: z
     .string()
-    .describe('Entity name to score')
-    .default('Amazon.com Inc'),
+    .optional()
+    .describe('Entity name to score'),
   jurisdiction: z
     .string()
     .optional()
-    .default('US-DE')
     .describe('ISO jurisdiction code (e.g. US-DE, GB)'),
   entity_id: z
     .string()

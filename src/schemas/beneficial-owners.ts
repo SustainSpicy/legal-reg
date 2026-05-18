@@ -5,12 +5,10 @@ export const BeneficialOwnersInput = z.object({
   entity_name: z
     .string()
     .optional()
-    .describe('Entity name — used if entity_id not provided')
-    .default('Amazon.com Inc'),
+    .describe('Entity name — used if entity_id not provided'),
   jurisdiction: z
     .string()
     .optional()
-    .default('US-DE')
     .describe('ISO jurisdiction code'),
   entity_id: z
     .string()
