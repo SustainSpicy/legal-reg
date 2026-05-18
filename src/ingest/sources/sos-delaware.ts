@@ -1,185 +1,280 @@
 // Delaware ICIS (Integrated Corporate Information System)
 // Official portal: https://icis.corp.delaware.gov
-// No public REST API — structured HTML responses to POST requests.
-// Delaware is the most important US jurisdiction (~70% of Fortune 500 incorporated here).
+// No public REST API — scrapes the WebForms portal.
+// Delaware is the most important US jurisdiction (~70% of Fortune 500 incorporate here).
 //
 // Lookup order:
-//   1. OpenCorporates free API — indexes ICIS directly, works from any IP, covers private companies
-//   2. ICIS direct scrape — fallback if OC misses the entity (session cookie preserved correctly)
+//   1. OpenCorporates API — indexes ICIS directly; requires OPENCORPORATES_API_TOKEN
+//   2. ICIS 3-step scrape — GET form state, POST search, POST detail postback
+//
+// ICIS form notes (updated 2025):
+//   • Submit button: ctl00$ContentPlaceHolder1$btnSubmit  (was btnSearch)
+//   • Entity name:   ctl00$ContentPlaceHolder1$frmEntityName  (was txtEntityName)
+//   • Results table: id="tblResults" with span[id$=lblFileNumber] + anchor[data-ca]
+//   • Detail via:    __doPostBack postback from search results VIEWSTATE (no direct URL)
 
 import { generateEntityId } from '../../resolvers/entity-resolver.js';
 import { normaliseName } from '../../resolvers/name-normaliser.js';
 import type { EntityLookupOutputType } from '../../schemas/entity.js';
 import { lookupViaOpenCorporates } from './opencorporates.js';
 
-const ICIS_SEARCH_URL = 'https://icis.corp.delaware.gov/Ecorp/EntitySearch/NameSearch.aspx';
-const ICIS_DETAIL_URL = 'https://icis.corp.delaware.gov/Ecorp/EntitySearch/EntitySearchResult.aspx';
+const ICIS_URL = 'https://icis.corp.delaware.gov/Ecorp/EntitySearch/NameSearch.aspx';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
-function extractViewState(html: string): { viewstate: string; eventvalidation: string; generator: string } {
-  const vsMatch = /id="__VIEWSTATE"\s+value="([^"]+)"/.exec(html);
-  const evMatch = /id="__EVENTVALIDATION"\s+value="([^"]+)"/.exec(html);
-  const vsgMatch = /id="__VIEWSTATEGENERATOR"\s+value="([^"]+)"/.exec(html);
-  return {
-    viewstate: vsMatch?.[1] ?? '',
-    eventvalidation: evMatch?.[1] ?? '',
-    generator: vsgMatch?.[1] ?? '',
-  };
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function collectHiddens(html: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const m of html.matchAll(/<input[^>]+type="hidden"[^>]*>/gi)) {
+    const nameM = /name="([^"]+)"/.exec(m[0]);
+    const valM = /value="([^"]*)"/.exec(m[0]);
+    if (nameM) out[nameM[1]] = valM?.[1] ?? '';
+  }
+  return out;
 }
 
-interface ICISEntity {
+function parseCookies(headers: Headers): string {
+  const cookies = headers.getSetCookie?.() ?? [];
+  return cookies.map((c) => c.split(';')[0]?.trim() ?? '').filter(Boolean).join('; ');
+}
+
+interface ICISResult {
   file_number: string;
   entity_name: string;
-  status: string;
-  incorporation_date: string | null;
-  entity_type: string;
+  status: EntityLookupOutputType['status'];
+  event_target: string;
 }
 
-function parseSearchResults(html: string): ICISEntity[] {
-  const results: ICISEntity[] = [];
+function parseSearchResults(html: string): ICISResult[] {
+  const results: ICISResult[] = [];
 
-  const tableMatch = /<table[^>]*id="GridViewEntityInformation"[^>]*>([\s\S]*?)<\/table>/i.exec(html);
-  if (!tableMatch) return results;
+  const tblMatch = /<table[^>]*id="tblResults"[^>]*>([\s\S]*?)<\/table>/i.exec(html);
+  if (!tblMatch) return results;
 
-  const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-  let rowMatch: RegExpExecArray | null;
-  let isHeader = true;
+  const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowM: RegExpExecArray | null;
+  let first = true;
 
-  while ((rowMatch = rowRegex.exec(tableMatch[1]!)) !== null) {
-    if (isHeader) { isHeader = false; continue; }
+  while ((rowM = rowRe.exec(tblMatch[1]!)) !== null) {
+    if (first) { first = false; continue; }
 
-    const cells = [...rowMatch[1]!.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)]
-      .map((m) => m[1]!.replace(/<[^>]+>/g, '').trim());
+    const fileM = /lblFileNumber[^>]*>(\d+)<\/span>/.exec(rowM[1]!);
+    const nameM = /<a[^>]*>([^<]+)<\/a>/.exec(rowM[1]!);
+    const caM = /data-ca="(True|False)"/.exec(rowM[1]!);
+    const idM = /id="([^"]*lnkbtnEntityName[^"]*)"/.exec(rowM[1]!);
 
-    if (cells.length < 3) continue;
+    const fileNum = fileM?.[1];
+    const entityName = nameM?.[1]?.trim();
+    if (!fileNum || !entityName) continue;
 
-    results.push({
-      file_number: cells[0] ?? '',
-      entity_name: cells[1] ?? '',
-      status: cells[2] ?? '',
-      incorporation_date: cells[3] ?? null,
-      entity_type: cells[4] ?? '',
-    });
+    const cancelled = caM?.[1] === 'True';
+    const status: EntityLookupOutputType['status'] = cancelled ? 'dissolved' : 'active';
+
+    // ID uses _ separators; postback event target uses $
+    const eventTarget = (idM?.[1] ?? '').replace(/_/g, '$');
+
+    results.push({ file_number: fileNum, entity_name: entityName, status, event_target: eventTarget });
   }
 
   return results;
 }
 
-function parseEntityDetail(html: string, fileNumber: string): Partial<EntityLookupOutputType> {
-  const agentNameMatch = /<span[^>]*id="[^"]*RegisteredAgent[^"]*"[^>]*>([^<]+)<\/span>/i.exec(html);
-  const agentAddrMatch = /<span[^>]*id="[^"]*RegisteredOffice[^"]*"[^>]*>([^<]+)<\/span>/i.exec(html);
-  const statusMatch = /<span[^>]*id="[^"]*EntityStatus[^"]*"[^>]*>([^<]+)<\/span>/i.exec(html);
-  const incDateMatch = /<span[^>]*id="[^"]*IncorporationDate[^"]*"[^>]*>([^<]+)<\/span>/i.exec(html);
+interface DetailInfo {
+  incorporated_at: string | null;
+  registered_agent: EntityLookupOutputType['registered_agent'];
+  status: EntityLookupOutputType['status'] | null;
+}
 
-  const agentName = agentNameMatch?.[1]?.trim() ?? null;
-  const agentAddr = agentAddrMatch?.[1]?.trim() ?? null;
-  const rawStatus = statusMatch?.[1]?.trim().toLowerCase() ?? 'unknown';
+function parseDetailHtml(html: string): DetailInfo {
+  // Detail page span IDs vary — try several patterns
+  const agentM = /<span[^>]*(?:RegisteredAgent|Resident\s*Agent)[^>]*>([^<]+)<\/span>/i.exec(html)
+    ?? /<td[^>]*>Registered\s*Agent<\/td>\s*<td[^>]*>([^<]+)<\/td>/i.exec(html);
+  const officeM = /<span[^>]*(?:RegisteredOffice|Resident\s*Office)[^>]*>([^<]+)<\/span>/i.exec(html)
+    ?? /<td[^>]*>Registered\s*Office<\/td>\s*<td[^>]*>([^<]+)<\/td>/i.exec(html);
+  const statusM = /<span[^>]*EntityStatus[^>]*>([^<]+)<\/span>/i.exec(html)
+    ?? /<td[^>]*>Entity\s*Status<\/td>\s*<td[^>]*>([^<]+)<\/td>/i.exec(html);
+  const incM = /<span[^>]*(?:IncorporationDate|DateOfFormation)[^>]*>([^<]+)<\/span>/i.exec(html)
+    ?? /<td[^>]*>(?:Incorporation|Formation)\s*Date<\/td>\s*<td[^>]*>([^<]+)<\/td>/i.exec(html);
 
-  let status: EntityLookupOutputType['status'] = 'unknown';
-  if (rawStatus.includes('good standing') || rawStatus === 'active') status = 'active';
-  else if (rawStatus.includes('void') || rawStatus.includes('cancel')) status = 'dissolved';
-  else if (rawStatus.includes('suspend')) status = 'suspended';
+  const agentName = agentM?.[1]?.trim() ?? null;
+  const agentAddr = officeM?.[1]?.trim() ?? null;
+
+  const rawStatus = statusM?.[1]?.trim().toLowerCase() ?? '';
+  let status: EntityLookupOutputType['status'] | null = null;
+  if (rawStatus) {
+    if (rawStatus.includes('good standing') || rawStatus === 'active') status = 'active';
+    else if (rawStatus.includes('void') || rawStatus.includes('cancel') || rawStatus.includes('dissol')) status = 'dissolved';
+    else if (rawStatus.includes('suspend')) status = 'suspended';
+    else status = 'unknown';
+  }
 
   return {
-    status,
-    incorporated_at: incDateMatch?.[1]?.trim() ?? null,
+    incorporated_at: incM?.[1]?.trim() ?? null,
     registered_agent: agentName ? { name: agentName, address: agentAddr ?? '' } : null,
-    source_url: `https://icis.corp.delaware.gov/Ecorp/EntitySearch/EntitySearchResult.aspx?FileNumber=${fileNumber}`,
+    status,
   };
 }
 
-export async function searchDelawareEntities(entityName: string): Promise<ICISEntity[]> {
-  // Step 1: GET the search page to grab VIEWSTATE + session cookie
-  const initRes = await fetch(ICIS_SEARCH_URL, {
-    headers: { 'User-Agent': 'CorpSignal-MCP/1.0' },
+// ---------------------------------------------------------------------------
+// ICIS 3-step scrape
+// ---------------------------------------------------------------------------
+
+export async function searchDelawareEntities(entityName: string): Promise<ICISResult[]> {
+  // Step 1: GET — acquire session cookie + VIEWSTATE
+  const initRes = await fetch(ICIS_URL, {
+    headers: { 'User-Agent': UA, 'Accept': 'text/html,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' },
   });
   if (!initRes.ok) throw new Error(`ICIS init failed: ${initRes.status}`);
+  const cookies1 = parseCookies(initRes.headers);
   const initHtml = await initRes.text();
-  const { viewstate, eventvalidation, generator } = extractViewState(initHtml);
+  const hiddens1 = collectHiddens(initHtml);
 
-  // Step 2: POST search, preserving the ASP.NET session cookie from step 1
-  const body = new URLSearchParams({
-    __VIEWSTATE: viewstate,
-    __EVENTVALIDATION: eventvalidation,
-    __VIEWSTATEGENERATOR: generator,
-    ctl00$ContentPlaceHolder1$txtEntityName: entityName,
-    ctl00$ContentPlaceHolder1$btnSearch: 'Search',
-    ctl00$ContentPlaceHolder1$SearchType: 'B',
+  // Step 2: POST search
+  const searchBody = new URLSearchParams({
+    ...hiddens1,
+    'ctl00$ContentPlaceHolder1$frmEntityName': entityName,
+    'ctl00$ContentPlaceHolder1$btnSubmit': 'Search',
+    'email_confirm': '',  // honeypot — must be empty
   });
 
-  const searchRes = await fetch(ICIS_SEARCH_URL, {
+  const searchRes = await fetch(ICIS_URL, {
     method: 'POST',
     headers: {
+      'User-Agent': UA,
       'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': 'CorpSignal-MCP/1.0',
-      Referer: ICIS_SEARCH_URL,
-      // Session cookie is required for VIEWSTATE validation on ASP.NET
-      Cookie: initRes.headers.get('set-cookie') ?? '',
+      'Accept': 'text/html,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Referer': ICIS_URL,
+      'Origin': 'https://icis.corp.delaware.gov',
+      'Cookie': cookies1,
     },
-    body: body.toString(),
+    body: searchBody.toString(),
   });
-
   if (!searchRes.ok) throw new Error(`ICIS search failed: ${searchRes.status}`);
   const searchHtml = await searchRes.text();
+
   return parseSearchResults(searchHtml);
 }
 
+async function fetchICISDetail(
+  searchHtml: string,
+  searchCookies: string,
+  result: ICISResult,
+): Promise<DetailInfo> {
+  if (!result.event_target) return { incorporated_at: null, registered_agent: null, status: null };
+
+  const hiddens2 = collectHiddens(searchHtml);
+  const detailBody = new URLSearchParams({
+    ...hiddens2,
+    '__EVENTTARGET': result.event_target,
+    '__EVENTARGUMENT': '',
+    'email_confirm': '',
+  });
+
+  const detailRes = await fetch(ICIS_URL, {
+    method: 'POST',
+    headers: {
+      'User-Agent': UA,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'text/html,*/*;q=0.8',
+      'Referer': ICIS_URL,
+      'Origin': 'https://icis.corp.delaware.gov',
+      'Cookie': searchCookies,
+    },
+    body: detailBody.toString(),
+  });
+  if (!detailRes.ok) return { incorporated_at: null, registered_agent: null, status: null };
+
+  return parseDetailHtml(await detailRes.text());
+}
+
+// ---------------------------------------------------------------------------
+// Full ICIS lookup (search + optional detail)
+// ---------------------------------------------------------------------------
+
 async function lookupDelawareEntityViaICIS(entityName: string): Promise<EntityLookupOutputType | null> {
-  const results = await searchDelawareEntities(entityName);
+  // Step 1+2: GET + search POST
+  const initRes = await fetch(ICIS_URL, {
+    headers: { 'User-Agent': UA, 'Accept': 'text/html,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' },
+  });
+  if (!initRes.ok) throw new Error(`ICIS init failed: ${initRes.status}`);
+  const cookies1 = parseCookies(initRes.headers);
+  const initHtml = await initRes.text();
+  const hiddens1 = collectHiddens(initHtml);
+
+  const searchBody = new URLSearchParams({
+    ...hiddens1,
+    'ctl00$ContentPlaceHolder1$frmEntityName': entityName,
+    'ctl00$ContentPlaceHolder1$btnSubmit': 'Search',
+    'email_confirm': '',
+  });
+
+  const searchRes = await fetch(ICIS_URL, {
+    method: 'POST',
+    headers: {
+      'User-Agent': UA, 'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'text/html,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9',
+      'Referer': ICIS_URL, 'Origin': 'https://icis.corp.delaware.gov', 'Cookie': cookies1,
+    },
+    body: searchBody.toString(),
+  });
+  if (!searchRes.ok) throw new Error(`ICIS search failed: ${searchRes.status}`);
+
+  const searchCookies2 = parseCookies(searchRes.headers);
+  const allCookies = [cookies1, searchCookies2].filter(Boolean).join('; ');
+  const searchHtml = await searchRes.text();
+
+  const results = parseSearchResults(searchHtml);
   if (results.length === 0) return null;
 
+  // Pick best match by name similarity
   const normQuery = normaliseName(entityName);
-  const best = results
-    .map((r) => ({ r, score: normaliseName(r.entity_name) === normQuery ? 1 : 0.8 }))
-    .sort((a, b) => b.score - a.score)[0];
+  const scored = results.map((r) => ({
+    r,
+    score: normaliseName(r.entity_name) === normQuery ? 1.0 : 0.85,
+  })).sort((a, b) => b.score - a.score);
 
-  if (!best) return null;
+  const best = scored[0]!;
 
-  const { r } = best;
-
-  let detail: Partial<EntityLookupOutputType> = {};
-  if (r.file_number) {
-    try {
-      const detailRes = await fetch(
-        `${ICIS_DETAIL_URL}?FileNumber=${encodeURIComponent(r.file_number)}`,
-        { headers: { 'User-Agent': 'CorpSignal-MCP/1.0' } },
-      );
-      if (detailRes.ok) {
-        detail = parseEntityDetail(await detailRes.text(), r.file_number);
-      }
-    } catch {
-      // Non-fatal — return without detail
-    }
+  // Step 3: detail postback for registered_agent + incorporated_at
+  let detail: DetailInfo = { incorporated_at: null, registered_agent: null, status: null };
+  if (best.r.event_target) {
+    detail = await fetchICISDetail(searchHtml, allCookies, best.r).catch(() => ({
+      incorporated_at: null, registered_agent: null, status: null,
+    }));
   }
 
-  const rawStatus = r.status.toLowerCase();
-  let status: EntityLookupOutputType['status'] = detail.status ?? 'unknown';
-  if (!detail.status) {
-    if (rawStatus.includes('good') || rawStatus === 'active') status = 'active';
-    else if (rawStatus.includes('void') || rawStatus.includes('cancel')) status = 'dissolved';
-    else if (rawStatus.includes('suspend')) status = 'suspended';
-  }
+  const status = detail.status ?? best.r.status;
 
   return {
-    entity_id: generateEntityId('US-DE', r.entity_name),
-    canonical_name: r.entity_name,
+    entity_id: generateEntityId('US-DE', best.r.entity_name),
+    canonical_name: best.r.entity_name,
     jurisdiction: 'US-DE',
     status,
-    incorporated_at: detail.incorporated_at ?? r.incorporation_date ?? null,
+    incorporated_at: detail.incorporated_at ?? null,
     registered_agent: detail.registered_agent ?? null,
     officers: [],
     source: 'delaware_sos',
-    source_url: detail.source_url ?? ICIS_SEARCH_URL,
+    source_url: `https://icis.corp.delaware.gov/Ecorp/EntitySearch/NameSearch.aspx`,
     freshness_secs: 0,
     confidence: best.score,
     data_freshness: 'fresh',
   };
 }
 
-export async function lookupDelawareEntity(entityName: string): Promise<EntityLookupOutputType | null> {
-  // OpenCorporates indexes ICIS directly and works from any IP — try first
-  const ocResult = await lookupViaOpenCorporates(entityName, 'US-DE').catch(() => null);
-  if (ocResult) return ocResult;
+// ---------------------------------------------------------------------------
+// Public entry point
+// ---------------------------------------------------------------------------
 
-  // Fall back to direct ICIS scrape (requires session cookie, may be blocked from VPS)
+export async function lookupDelawareEntity(entityName: string): Promise<EntityLookupOutputType | null> {
+  // OpenCorporates indexes ICIS directly — try first if API token is configured
+  if (process.env['OPENCORPORATES_API_TOKEN']) {
+    const ocResult = await lookupViaOpenCorporates(entityName, 'US-DE').catch(() => null);
+    if (ocResult) return ocResult;
+  }
+
+  // Direct ICIS scrape — 3-step flow (GET form → POST search → POST detail)
   return lookupDelawareEntityViaICIS(entityName).catch(() => null);
 }

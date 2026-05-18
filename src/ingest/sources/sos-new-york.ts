@@ -1,46 +1,45 @@
 // New York Department of State — Socrata Open Data API
-// Dataset: https://data.ny.gov/Economic-Development/Active-Corporations-Beginning-1800s/ej5i-fucn
-// Free, no API key required. Returns JSON with entity records.
+// Dataset: https://data.ny.gov/resource/n9v6-gdp6.json  (Active Corporations: Beginning 1800)
+// Replaces: ej5i-fucn (removed 2025)
+// Free, no API key required. Includes registered agent, filing date, and jurisdiction.
+// Both domestic NY corps and foreign corps registered in NY are in this dataset.
 
 import { generateEntityId } from '../../resolvers/entity-resolver.js';
 import { normaliseName } from '../../resolvers/name-normaliser.js';
 import type { EntityLookupOutputType } from '../../schemas/entity.js';
 
-const NY_API_URL = 'https://data.ny.gov/resource/ej5i-fucn.json';
+const NY_API_URL = 'https://data.ny.gov/resource/n9v6-gdp6.json';
 
 interface NYEntityRecord {
   current_entity_name: string;
   dos_id: string;
   entity_type: string;
-  date_of_initial_dos_filing: string | null;
+  initial_dos_filing_date: string | null;
+  jurisdiction: string | null;
   county: string | null;
-  // Active corporations dataset — status is implicitly active
-}
-
-function mapNYStatus(_record: NYEntityRecord): EntityLookupOutputType['status'] {
-  // The NY dataset only contains active/current corporations
-  return 'active';
+  registered_agent_name?: string;
+  registered_agent_address_1?: string;
+  registered_agent_city?: string;
+  registered_agent_state?: string;
+  registered_agent_zip?: string;
 }
 
 export async function lookupNewYorkEntity(entityName: string): Promise<EntityLookupOutputType | null> {
-  // Socrata SoQL query — $q for full-text, $where for field filter
   const normName = normaliseName(entityName);
   const params = new URLSearchParams({
     '$q': entityName,
     '$limit': '5',
-    '$order': ':relevance',
   });
 
   const res = await fetch(`${NY_API_URL}?${params.toString()}`, {
-    headers: { 'User-Agent': 'CorpSignal-MCP/1.0' },
-  });
+    headers: { 'User-Agent': 'CorpSignal-MCP/1.0', Accept: 'application/json' },
+  }).catch(() => null);
 
-  if (!res.ok) throw new Error(`NY SOS API failed: ${res.status}`);
+  if (!res?.ok) return null;
 
-  const records = await res.json() as NYEntityRecord[];
-  if (records.length === 0) return null;
+  const records = await res.json().catch(() => null) as NYEntityRecord[] | null;
+  if (!records || records.length === 0) return null;
 
-  // Rank by name similarity
   const ranked = records
     .map((r) => ({
       r,
@@ -53,13 +52,22 @@ export async function lookupNewYorkEntity(entityName: string): Promise<EntityLoo
 
   const { r } = best;
 
+  const agentAddr = [
+    r.registered_agent_address_1,
+    r.registered_agent_city,
+    r.registered_agent_state,
+    r.registered_agent_zip,
+  ].filter(Boolean).join(', ');
+
   return {
     entity_id: generateEntityId('US-NY', r.current_entity_name),
     canonical_name: r.current_entity_name,
     jurisdiction: 'US-NY',
-    status: mapNYStatus(r),
-    incorporated_at: r.date_of_initial_dos_filing ?? null,
-    registered_agent: null, // Not in the public dataset
+    status: 'active', // dataset only contains active/current entities
+    incorporated_at: r.initial_dos_filing_date?.slice(0, 10) ?? null,
+    registered_agent: r.registered_agent_name
+      ? { name: r.registered_agent_name, address: agentAddr }
+      : null,
     officers: [],
     source: 'new_york_dos',
     source_url: `https://apps.dos.ny.gov/publicInquiry/EntityDisplay?dosId=${r.dos_id}`,

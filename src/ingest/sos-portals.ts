@@ -106,6 +106,9 @@ export async function refreshEntityCache(
       const key = entityCacheKey(jurisdiction, entityName);
       result = { ...result, freshness_secs: 0 };
       await setCache(key, result, ENTITY_TTL_SECS);
+      // Also write the reverse-index so entity_id-only calls to downstream tools
+      // (compliance_risk_score, filings_fetch, beneficial_owners) can verify the entity
+      await setCache(`entity:id:${result.entity_id}`, result, ENTITY_TTL_SECS);
       return result;
     }
   } catch (err) {

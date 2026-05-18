@@ -62,9 +62,22 @@ export async function lookupCaliforniaEntity(entityName: string): Promise<Entity
     body,
   }).catch(() => null);
 
-  if (!res?.ok) return null;
+  if (!res) return null;
+
+  if (!res.ok) {
+    // BizFile Online is commonly protected by Incapsula WAF on server/cloud IPs.
+    // When blocked the API returns a bot-challenge HTML page (200 or 403).
+    // The lookupSOSEntity caller will fall back to OpenCorporates (requires token)
+    // and then resolveEntityUpstream falls back to EDGAR for CA-incorporated public cos.
+    if (res.status === 403) {
+      console.warn('[sos-ca] BizFile returned 403 — likely Incapsula WAF block');
+    }
+    return null;
+  }
 
   const data = await res.json().catch(() => null) as CASearchResponse | null;
+  // Incapsula challenge pages are served as 200 HTML, not JSON — detect and bail
+  if (!data || !data.hits) return null;
   const hits = data?.hits?.hits ?? [];
   if (hits.length === 0) return null;
 

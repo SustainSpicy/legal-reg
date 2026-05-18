@@ -51,7 +51,17 @@ export async function lookupViaOpenCorporates(
     },
   }).catch(() => null);
 
-  if (!res?.ok) return null;
+  if (!res) return null;
+
+  if (res.status === 401) {
+    // OpenCorporates no longer offers anonymous free-tier access — an API token is required.
+    // Set OPENCORPORATES_API_TOKEN in .env to enable this source.
+    // Register at https://opencorporates.com/users/new for a free API token.
+    console.warn('[opencorporates] 401 Unauthorized — set OPENCORPORATES_API_TOKEN in .env');
+    return null;
+  }
+
+  if (!res.ok) return null;
 
   const data = await res.json().catch(() => null) as {
     results?: { companies?: Array<{ company: OCCompany }> };
