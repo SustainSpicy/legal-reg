@@ -41,11 +41,16 @@ export function registerEntityLookup(server: McpServer): void {
 
       const cached = await resolveEntityFromCache(entity_name, jurisdiction);
       if (cached) {
-        const result: EntityLookupOutputType = { ...cached };
-        return {
-          content: [{ type: 'text', text: JSON.stringify(result) }],
-          structuredContent: result,
-        };
+        // Don't serve a confidence-0 stale stub as a successful lookup — it means
+        // a prior request couldn't find the entity and cached a placeholder.
+        // Fall through to retry upstream so the caller gets a fresh attempt.
+        if (!(cached.confidence === 0 && cached.data_freshness === 'stale')) {
+          const result: EntityLookupOutputType = { ...cached };
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result) }],
+            structuredContent: result,
+          };
+        }
       }
 
       const result = await resolveEntityUpstream(entity_name, jurisdiction);

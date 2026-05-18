@@ -139,8 +139,11 @@ export async function resolveEntityUpstream(
   }
 
   if (live) {
-    // Write-through: cache live result for 4 hours
+    // Write-through: cache live result for 4 hours by both name key and id key.
+    // The id key enables downstream tools to look up an entity by entity_id without
+    // using the id string as a fake entity name.
     await setCache(key, live, 14400);
+    await setCache(`entity:id:${live.entity_id}`, live, 14400);
     // Track for background cache warming across all jurisdictions
     await addToEntityWatchlist(entityName, jurisdiction);
     return live;
@@ -162,8 +165,10 @@ export async function resolveEntityUpstream(
     data_freshness: 'stale',
   };
 
-  // Short TTL so the next request retries upstream
+  // Short TTL so the next request retries upstream.
+  // Also write the id key so downstream tools can detect the stub and refuse.
   await setCache(key, stub, 300);
+  await setCache(`entity:id:${stub.entity_id}`, stub, 300);
   return stub;
 }
 

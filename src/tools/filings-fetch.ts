@@ -125,6 +125,23 @@ export function registerFilingsFetch(server: McpServer): void {
 
       const resolvedJurisdiction = jurisdiction ?? 'US-DE';
       const canonicalId = entity_id ?? generateEntityId(resolvedJurisdiction, entity_name!);
+
+      // When entity_id is provided without entity_name, verify the entity was actually
+      // resolved by entity_lookup before fetching filings. A confidence-0 stub means
+      // entity_lookup found nothing; we must refuse rather than return Apple/Amazon filings.
+      if (entity_id && !entity_name) {
+        const knownEntity = await getCached<import('../schemas/entity.js').EntityLookupOutputType>(
+          `entity:id:${canonicalId}`,
+        );
+        if (!knownEntity || (knownEntity.confidence === 0 && knownEntity.status === 'unknown')) {
+          return structuredError(
+            'ENTITY_NOT_RESOLVED',
+            `Entity '${canonicalId}' is not resolved — ` +
+            `run entity_lookup first to verify the entity exists before fetching filings.`,
+          );
+        }
+      }
+
       // Separate cache keys for with/without financials to avoid serving
       // cached null-financials when parse_financials=true
       const cacheKey = filingsCacheKey(canonicalId) + (parse_financials ? ':fin' : '');

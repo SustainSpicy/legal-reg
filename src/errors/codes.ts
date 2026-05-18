@@ -13,6 +13,7 @@ export type ErrorOutputType = z.infer<typeof ErrorOutputSchema>;
 
 export const ERROR_CODES = {
   ENTITY_NOT_FOUND: { retryable: false, http: 404 },
+  ENTITY_NOT_RESOLVED: { retryable: true, http: 422 },
   UPSTREAM_UNAVAILABLE: { retryable: true, http: 200 }, // 200 + stale flag
   RATE_LIMIT_EXCEEDED: { retryable: true, http: 429 },
   AUTH_REQUIRED: { retryable: false, http: 402 },

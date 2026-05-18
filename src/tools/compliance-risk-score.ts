@@ -74,19 +74,28 @@ export function registerComplianceRiskScore(server: McpServer): void {
         };
       }
 
-      const [entity, sanctionsResult] = await Promise.all([
-        (async () => {
-          if (!entity_name) {
-            // entity_id provided without entity_name — look up from entity cache
-            const cached = await getCached<import('../schemas/entity.js').EntityLookupOutputType>(`entity:id:${canonicalId}`);
-            if (cached) return cached;
-            return resolveEntityUpstream(canonicalId, resolvedJurisdiction);
-          }
-          const c = await resolveEntityFromCache(entity_name, resolvedJurisdiction);
-          return c ?? resolveEntityUpstream(entity_name, resolvedJurisdiction);
-        })(),
-        screenEntity(entity_name ?? entity_id!, [...SANCTIONS_LISTS], 0.85),
-      ]);
+      // Resolve entity first so we can guard against stubs before doing any work
+      const entity = await (async () => {
+        if (!entity_name) {
+          // entity_id-only path: look up by the id key written by entity_lookup
+          return getCached<import('../schemas/entity.js').EntityLookupOutputType>(`entity:id:${canonicalId}`);
+        }
+        const c = await resolveEntityFromCache(entity_name, resolvedJurisdiction);
+        return c ?? resolveEntityUpstream(entity_name, resolvedJurisdiction);
+      })();
+
+      // Refuse to score a confidence-0 stub — the entity hasn't been resolved.
+      // This prevents contamination when entity_lookup returned ENTITY_NOT_FOUND
+      // but the caller re-uses the inferred entity_id for downstream calls.
+      if (!entity || (entity.confidence === 0 && entity.status === 'unknown')) {
+        return structuredError(
+          'ENTITY_NOT_RESOLVED',
+          `Entity '${entity_name ?? canonicalId}' is not resolved — ` +
+          `run entity_lookup first to verify the entity exists before scoring compliance risk.`,
+        );
+      }
+
+      const sanctionsResult = await screenEntity(entity.canonical_name, [...SANCTIONS_LISTS], 0.85);
 
       const registrationScore = entity.status === 'active' ? 0 : 1;
       const sanctionsClearScore = sanctionsResult.hits.length > 0 ? 1 : 0;

@@ -238,6 +238,21 @@ export function registerBeneficialOwners(server: McpServer): void {
 
       const resolvedJurisdiction = jurisdiction ?? 'US-DE';
       const canonicalId = entity_id ?? generateEntityId(resolvedJurisdiction, entity_name!);
+
+      // Guard: refuse to operate on an unresolved entity_id
+      if (entity_id && !entity_name) {
+        const knownEntity = await getCached<import('../schemas/entity.js').EntityLookupOutputType>(
+          `entity:id:${canonicalId}`,
+        );
+        if (!knownEntity || (knownEntity.confidence === 0 && knownEntity.status === 'unknown')) {
+          return structuredError(
+            'ENTITY_NOT_RESOLVED',
+            `Entity '${canonicalId}' is not resolved — ` +
+            `run entity_lookup first to verify the entity exists before fetching ownership data.`,
+          );
+        }
+      }
+
       const cacheKey = beneficialOwnersCacheKey(canonicalId);
       const cached = await getCached<BeneficialOwnersOutputType>(cacheKey);
       if (cached) {
