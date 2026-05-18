@@ -14,6 +14,7 @@ import { lookupWashingtonEntity } from './sos-washington.js';
 import { lookupIllinoisEntity } from './sos-illinois.js';
 import { lookupGeorgiaEntity } from './sos-georgia.js';
 import { lookupPendingStateEntity } from './sos-pending-states.js';
+import { lookupViaOpenCorporates } from './opencorporates.js';
 
 // States with open REST APIs or structured data exports — implemented and verified live
 export const SOS_IMPLEMENTED: Record<string, string> = {
@@ -81,23 +82,32 @@ export async function lookupSOSEntity(
   jurisdiction: string,
 ): Promise<EntityLookupOutputType | null> {
   if (SCRAPE_ONLY_STATES.includes(jurisdiction)) {
-    // Only available via nightly scraper cache — return null to serve stale
-    return null;
+    // Only available via nightly scraper cache — try OpenCorporates as live fallback
+    return lookupViaOpenCorporates(entityName, jurisdiction).catch(() => null);
   }
 
+  let result: EntityLookupOutputType | null = null;
+
   switch (jurisdiction) {
-    case 'US-DE': return lookupDelawareEntity(entityName);
-    case 'US-CA': return lookupCaliforniaEntity(entityName);
-    case 'US-NY': return lookupNewYorkEntity(entityName);
-    case 'US-TX': return lookupTexasEntity(entityName);
-    case 'US-FL': return lookupFloridaEntity(entityName);
-    case 'US-CO': return lookupColoradoEntity(entityName);
-    case 'US-WA': return lookupWashingtonEntity(entityName);
-    case 'US-IL': return lookupIllinoisEntity(entityName);
-    case 'US-GA': return lookupGeorgiaEntity(entityName);
-    default:
-      return lookupPendingStateEntity(entityName, jurisdiction);
+    case 'US-DE': result = await lookupDelawareEntity(entityName); break;
+    case 'US-CA': result = await lookupCaliforniaEntity(entityName); break;
+    case 'US-NY': result = await lookupNewYorkEntity(entityName); break;
+    case 'US-TX': result = await lookupTexasEntity(entityName); break;
+    case 'US-FL': result = await lookupFloridaEntity(entityName); break;
+    case 'US-CO': result = await lookupColoradoEntity(entityName); break;
+    case 'US-WA': result = await lookupWashingtonEntity(entityName); break;
+    case 'US-IL': result = await lookupIllinoisEntity(entityName); break;
+    case 'US-GA': result = await lookupGeorgiaEntity(entityName); break;
+    default: result = await lookupPendingStateEntity(entityName, jurisdiction); break;
   }
+
+  // If primary SOS source fails (blocked, changed API, etc.), fall back to
+  // OpenCorporates which indexes most official registries directly
+  if (!result) {
+    result = await lookupViaOpenCorporates(entityName, jurisdiction).catch(() => null);
+  }
+
+  return result;
 }
 
 // Placeholder for nightly-scraped state data format

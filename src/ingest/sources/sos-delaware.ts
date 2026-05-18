@@ -2,24 +2,27 @@
 // Official portal: https://icis.corp.delaware.gov
 // No public REST API — structured HTML responses to POST requests.
 // Delaware is the most important US jurisdiction (~70% of Fortune 500 incorporated here).
+//
+// Lookup order:
+//   1. OpenCorporates free API — indexes ICIS directly, works from any IP, covers private companies
+//   2. ICIS direct scrape — fallback if OC misses the entity (session cookie preserved correctly)
 
 import { generateEntityId } from '../../resolvers/entity-resolver.js';
 import { normaliseName } from '../../resolvers/name-normaliser.js';
 import type { EntityLookupOutputType } from '../../schemas/entity.js';
+import { lookupViaOpenCorporates } from './opencorporates.js';
 
 const ICIS_SEARCH_URL = 'https://icis.corp.delaware.gov/Ecorp/EntitySearch/NameSearch.aspx';
 const ICIS_DETAIL_URL = 'https://icis.corp.delaware.gov/Ecorp/EntitySearch/EntitySearchResult.aspx';
 
-// Delaware ICIS returns HTML — we parse it with regex against the known page structure.
-// This is a background-only fetch (never per-request). If ICIS changes its HTML, the
-// nightly job fails loudly and the cache serves stale data with data_freshness: stale.
-
-function extractViewState(html: string): { viewstate: string; eventvalidation: string } {
+function extractViewState(html: string): { viewstate: string; eventvalidation: string; generator: string } {
   const vsMatch = /id="__VIEWSTATE"\s+value="([^"]+)"/.exec(html);
   const evMatch = /id="__EVENTVALIDATION"\s+value="([^"]+)"/.exec(html);
+  const vsgMatch = /id="__VIEWSTATEGENERATOR"\s+value="([^"]+)"/.exec(html);
   return {
     viewstate: vsMatch?.[1] ?? '',
     eventvalidation: evMatch?.[1] ?? '',
+    generator: vsgMatch?.[1] ?? '',
   };
 }
 
@@ -34,7 +37,6 @@ interface ICISEntity {
 function parseSearchResults(html: string): ICISEntity[] {
   const results: ICISEntity[] = [];
 
-  // ICIS search results appear in a table with id="GridViewEntityInformation"
   const tableMatch = /<table[^>]*id="GridViewEntityInformation"[^>]*>([\s\S]*?)<\/table>/i.exec(html);
   if (!tableMatch) return results;
 
@@ -86,21 +88,22 @@ function parseEntityDetail(html: string, fileNumber: string): Partial<EntityLook
 }
 
 export async function searchDelawareEntities(entityName: string): Promise<ICISEntity[]> {
-  // Step 1: GET the search page to grab VIEWSTATE
+  // Step 1: GET the search page to grab VIEWSTATE + session cookie
   const initRes = await fetch(ICIS_SEARCH_URL, {
     headers: { 'User-Agent': 'CorpSignal-MCP/1.0' },
   });
   if (!initRes.ok) throw new Error(`ICIS init failed: ${initRes.status}`);
   const initHtml = await initRes.text();
-  const { viewstate, eventvalidation } = extractViewState(initHtml);
+  const { viewstate, eventvalidation, generator } = extractViewState(initHtml);
 
-  // Step 2: POST search with entity name (begins-with search)
+  // Step 2: POST search, preserving the ASP.NET session cookie from step 1
   const body = new URLSearchParams({
     __VIEWSTATE: viewstate,
     __EVENTVALIDATION: eventvalidation,
+    __VIEWSTATEGENERATOR: generator,
     ctl00$ContentPlaceHolder1$txtEntityName: entityName,
     ctl00$ContentPlaceHolder1$btnSearch: 'Search',
-    ctl00$ContentPlaceHolder1$SearchType: 'B', // B = begins with
+    ctl00$ContentPlaceHolder1$SearchType: 'B',
   });
 
   const searchRes = await fetch(ICIS_SEARCH_URL, {
@@ -109,6 +112,8 @@ export async function searchDelawareEntities(entityName: string): Promise<ICISEn
       'Content-Type': 'application/x-www-form-urlencoded',
       'User-Agent': 'CorpSignal-MCP/1.0',
       Referer: ICIS_SEARCH_URL,
+      // Session cookie is required for VIEWSTATE validation on ASP.NET
+      Cookie: initRes.headers.get('set-cookie') ?? '',
     },
     body: body.toString(),
   });
@@ -118,11 +123,10 @@ export async function searchDelawareEntities(entityName: string): Promise<ICISEn
   return parseSearchResults(searchHtml);
 }
 
-export async function lookupDelawareEntity(entityName: string): Promise<EntityLookupOutputType | null> {
+async function lookupDelawareEntityViaICIS(entityName: string): Promise<EntityLookupOutputType | null> {
   const results = await searchDelawareEntities(entityName);
   if (results.length === 0) return null;
 
-  // Find best name match
   const normQuery = normaliseName(entityName);
   const best = results
     .map((r) => ({ r, score: normaliseName(r.entity_name) === normQuery ? 1 : 0.8 }))
@@ -132,7 +136,6 @@ export async function lookupDelawareEntity(entityName: string): Promise<EntityLo
 
   const { r } = best;
 
-  // Optionally fetch detail page for registered agent info
   let detail: Partial<EntityLookupOutputType> = {};
   if (r.file_number) {
     try {
@@ -170,4 +173,13 @@ export async function lookupDelawareEntity(entityName: string): Promise<EntityLo
     confidence: best.score,
     data_freshness: 'fresh',
   };
+}
+
+export async function lookupDelawareEntity(entityName: string): Promise<EntityLookupOutputType | null> {
+  // OpenCorporates indexes ICIS directly and works from any IP — try first
+  const ocResult = await lookupViaOpenCorporates(entityName, 'US-DE').catch(() => null);
+  if (ocResult) return ocResult;
+
+  // Fall back to direct ICIS scrape (requires session cookie, may be blocked from VPS)
+  return lookupDelawareEntityViaICIS(entityName).catch(() => null);
 }
