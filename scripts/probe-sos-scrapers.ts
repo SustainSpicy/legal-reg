@@ -43,7 +43,7 @@ const PROBE_LIST: Array<{ name: string; jurisdiction: string }> = [
   // Companies whose EDGAR stateOfIncorporation = CA (confirmed).
   // CA BizFile is Incapsula-protected — these resolve via EDGAR fallback.
   { name: 'Apple Inc',                              jurisdiction: 'US-CA' },
-  { name: 'Pacific Gas and Electric Company',       jurisdiction: 'US-CA' },
+  { name: 'PG&E Corp',                              jurisdiction: 'US-CA' },
   { name: 'PG&E Corporation',                       jurisdiction: 'US-CA' },
   { name: 'Edison International',                   jurisdiction: 'US-CA' },
   { name: 'Southern California Edison Company',     jurisdiction: 'US-CA' },
@@ -61,7 +61,7 @@ const PROBE_LIST: Array<{ name: string; jurisdiction: string }> = [
   { name: 'ConocoPhillips Company',                 jurisdiction: 'US-TX' },
   { name: 'Sysco Corporation',                      jurisdiction: 'US-TX' },
   { name: 'Texas Instruments Incorporated',         jurisdiction: 'US-TX' },
-  { name: 'Enterprise Products Partners LP',        jurisdiction: 'US-TX' },
+  { name: 'Enterprise Products Company',             jurisdiction: 'US-TX' },
   { name: 'Halliburton Company',                    jurisdiction: 'US-TX' },
 ];
 
