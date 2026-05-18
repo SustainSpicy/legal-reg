@@ -16,6 +16,7 @@ vi.mock('../../resolvers/entity-resolver.js', () => ({
   resolveEntityFromCache: mockResolveFromCache,
   resolveEntityUpstream: mockResolveUpstream,
   generateEntityId: (_jur: string, name: string) => `corpsig_test_${name.toLowerCase()}`,
+  MIN_ENTITY_CONFIDENCE: 0.7,
 }));
 
 vi.mock('../../resolvers/sanctions-matcher.js', () => ({

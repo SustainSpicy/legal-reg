@@ -14,6 +14,7 @@ vi.mock('../../resolvers/entity-resolver.js', () => ({
   },
   generateEntityId: (jur: string, name: string) =>
     `corpsig_${jur.toLowerCase().replace(/-/g, '_')}_${name.toLowerCase()}`,
+  MIN_ENTITY_CONFIDENCE: 0.7,
 }));
 
 vi.mock('../../ingest/sos-portals.js', () => ({

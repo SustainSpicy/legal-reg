@@ -148,12 +148,13 @@ describe('resolveEntityUpstream — US API states', () => {
     expect(mockResolveEDGAREntity).not.toHaveBeenCalled();
   });
 
-  it('falls back to EDGAR when SOS returns null', async () => {
-    const edgarEntity = makeEntity({ source: 'edgar' });
+  it('falls back to EDGAR when SOS returns null (pending states only)', async () => {
+    // US-DE is in SOS_PORTAL_LIVE — EDGAR is blocked there. Use US-NV (pending, no portal).
+    const edgarEntity = makeEntity({ jurisdiction: 'US-NV', source: 'edgar' });
     mockLookupSOSEntity.mockResolvedValue(null);
     mockResolveEDGAREntity.mockResolvedValue(edgarEntity);
 
-    const result = await resolveEntityUpstream('Acme Corp', 'US-DE');
+    const result = await resolveEntityUpstream('Acme Corp', 'US-NV');
     expect(mockResolveEDGAREntity).toHaveBeenCalledWith('Acme Corp');
     expect(result.source).toBe('edgar');
   });
@@ -193,9 +194,12 @@ describe('resolveEntityUpstream — cache write-through', () => {
 
     await resolveEntityUpstream('Acme Corp', 'US-DE');
 
-    expect(mockSetCache).toHaveBeenCalledOnce();
-    const [, , ttl] = mockSetCache.mock.calls[0]! as [string, unknown, number];
-    expect(ttl).toBe(14400);
+    // Two writes: name key + entity:id reverse-index key, both at 4-hour TTL
+    expect(mockSetCache).toHaveBeenCalledTimes(2);
+    for (const call of mockSetCache.mock.calls) {
+      const [, , ttl] = call as [string, unknown, number];
+      expect(ttl).toBe(14400);
+    }
   });
 
   it('adds entity to watchlist on a successful live resolution', async () => {
@@ -233,6 +237,7 @@ describe('resolveEntityUpstream — error resilience', () => {
     mockLookupSOSEntity.mockRejectedValue(new Error('timeout'));
 
     await resolveEntityUpstream('Acme Corp', 'US-DE');
-    expect(mockSetCache).toHaveBeenCalledOnce();
+    // Two writes: name key + entity:id reverse-index key
+    expect(mockSetCache).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { EntityLookupInput, EntityLookupSuccessSchema } from '../schemas/entity.js';
-import { resolveEntityFromCache, resolveEntityUpstream, SUPPORTED_JURISDICTIONS } from '../resolvers/entity-resolver.js';
+import { resolveEntityFromCache, resolveEntityUpstream, SUPPORTED_JURISDICTIONS, MIN_ENTITY_CONFIDENCE } from '../resolvers/entity-resolver.js';
 import { refreshEntityCache } from '../ingest/sos-portals.js';
 import { structuredError } from '../errors/codes.js';
 import type { EntityLookupOutputType } from '../schemas/entity.js';
@@ -10,7 +10,7 @@ export function registerEntityLookup(server: McpServer): void {
     'entity_lookup',
     {
       description:
-        'Verify any business entity: registration status, officers, and registered agent across US (all 50 states), UK (Companies House), and Canada. Returns a normalised schema regardless of jurisdiction. Use this when the user asks whether a company is active, wants to verify incorporation details, check if a business is legitimately registered, or confirm an entity registered agent.',
+        'Verify any business entity: registration status, officers, and registered agent across US (9 live SOS portals: DE, NY, TX, FL, CO, WA, IL, GA; all 50 states expanding via EDGAR fallback for pending states), UK (Companies House), and Canada. Returns a normalised schema regardless of jurisdiction. Use this when the user asks whether a company is active, wants to verify incorporation details, check if a business is legitimately registered, or confirm an entity registered agent.',
       inputSchema: EntityLookupInput,
       outputSchema: EntityLookupSuccessSchema,
       _meta: {
@@ -41,10 +41,9 @@ export function registerEntityLookup(server: McpServer): void {
 
       const cached = await resolveEntityFromCache(entity_name, jurisdiction);
       if (cached) {
-        // Don't serve a confidence-0 stale stub as a successful lookup — it means
-        // a prior request couldn't find the entity and cached a placeholder.
-        // Fall through to retry upstream so the caller gets a fresh attempt.
-        if (!(cached.confidence === 0 && cached.data_freshness === 'stale')) {
+        // Don't serve a low-confidence or unknown-status result from cache — it means
+        // a prior request couldn't resolve the entity clearly. Fall through to retry upstream.
+        if (cached.confidence >= MIN_ENTITY_CONFIDENCE && cached.status !== 'unknown') {
           const result: EntityLookupOutputType = { ...cached };
           return {
             content: [{ type: 'text', text: JSON.stringify(result) }],
@@ -58,7 +57,7 @@ export function registerEntityLookup(server: McpServer): void {
       // Trigger async cache refresh for next call
       void refreshEntityCache(entity_name, jurisdiction);
 
-      if (result.status === 'unknown' && result.confidence === 0) {
+      if (result.confidence < MIN_ENTITY_CONFIDENCE || result.status === 'unknown') {
         return structuredError('ENTITY_NOT_FOUND', `No entity found for '${entity_name}' in ${jurisdiction}`, {
           entity_name,
           jurisdiction,

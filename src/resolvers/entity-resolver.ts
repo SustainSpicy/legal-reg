@@ -77,6 +77,28 @@ export const SCRAPE_ONLY_JURISDICTIONS = new Set([
   'US-AL', 'US-AK', 'US-AR', 'US-HI', 'US-MS', 'US-MT', 'US-ND', 'US-WV',
 ]);
 
+// Minimum confidence threshold for a usable entity resolution.
+// Results below this are treated as unresolved — downstream tools must reject them.
+export const MIN_ENTITY_CONFIDENCE = 0.7;
+
+// US states where the SOS portal is live and its answer is authoritative.
+// For these states: if SOS returns null, the entity is not registered there — no
+// EDGAR fallback. EDGAR stateOfIncorporation is filer-reported and not verified
+// against the state registry, so it cannot substitute for a real SOS lookup.
+//
+// US-CA is intentionally absent: BizFile is blocked by Incapsula WAF, making
+// EDGAR the only viable path for CA-incorporated public companies.
+const SOS_PORTAL_LIVE = new Set([
+  'US-DE', // ICIS
+  'US-NY', // NY DOS Socrata
+  'US-TX', // TX Comptroller Socrata
+  'US-FL', // Sunbiz
+  'US-CO', // CO SOS
+  'US-WA', // WA SOS
+  'US-IL', // IL SOS
+  'US-GA', // GA SOS
+]);
+
 export function generateEntityId(jurisdiction: string, name: string): string {
   const normJurisdiction = jurisdiction.toLowerCase().replace(/-/g, '_');
   const normName = normaliseName(name).replace(/\s+/g, '_').slice(0, 40);
@@ -134,13 +156,14 @@ export async function resolveEntityUpstream(
         // Scrape-only states: check nightly cache first, then on-demand scrape
         live = await scrapeEntityOnDemand(entityName, jurisdiction);
       } else {
-        // API states: SOS portal first, EDGAR fallback
+        // API states: SOS portal first, EDGAR fallback for states without a live portal
         live = await lookupSOSEntity(entityName, jurisdiction);
-        if (!live) {
+        if (!live && !SOS_PORTAL_LIVE.has(jurisdiction)) {
+          // Only fall back to EDGAR for states where the SOS portal is not yet live
+          // (pending implementation or WAF-blocked like CA BizFile). For states with
+          // a working SOS portal, a null SOS result means the entity is not registered
+          // there — EDGAR stateOfIncorporation is filer-reported and not a substitute.
           const edgar = await resolveEDGAREntity(entityName);
-          // Only accept EDGAR result when its jurisdiction matches the query.
-          // EDGAR encodes the state-of-incorporation, so a Microsoft query for
-          // US-DE would return US-WA — reject that rather than silently lying.
           if (edgar && edgar.jurisdiction === jurisdiction) {
             live = edgar;
           }

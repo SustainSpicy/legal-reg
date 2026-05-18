@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { BeneficialOwnersInput, BeneficialOwnersSuccessSchema } from '../schemas/beneficial-owners.js';
 import { getCached, setCache, beneficialOwnersCacheKey } from '../cache/helpers.js';
-import { generateEntityId } from '../resolvers/entity-resolver.js';
+import { generateEntityId, MIN_ENTITY_CONFIDENCE } from '../resolvers/entity-resolver.js';
 import { structuredError } from '../errors/codes.js';
 import { logger } from '../logger.js';
 import { resolveCompanyNumber } from '../ingest/sources/companies-house-filings.js';
@@ -244,7 +244,7 @@ export function registerBeneficialOwners(server: McpServer): void {
         const knownEntity = await getCached<import('../schemas/entity.js').EntityLookupOutputType>(
           `entity:id:${canonicalId}`,
         );
-        if (!knownEntity || (knownEntity.confidence === 0 && knownEntity.status === 'unknown')) {
+        if (!knownEntity || knownEntity.confidence < MIN_ENTITY_CONFIDENCE || knownEntity.status === 'unknown') {
           return structuredError(
             'ENTITY_NOT_RESOLVED',
             `Entity '${canonicalId}' is not resolved — ` +

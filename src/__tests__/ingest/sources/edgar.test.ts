@@ -22,7 +22,7 @@ function jsonResponse(data: unknown, ok = true): Response {
 const TICKER_MAP = {
   '0': { cik_str: 320193, title: 'Apple Inc', ticker: 'AAPL' },
   '1': { cik_str: 789019, title: 'Microsoft Corporation', ticker: 'MSFT' },
-  '2': { cik_str: 1018724, title: 'Amazon Holdings LLC', ticker: 'AMZN' },
+  '2': { cik_str: 1018724, title: 'Washington Software Corp', ticker: 'WSSW' },
 };
 
 function makeSubmissions(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -102,12 +102,15 @@ describe('resolveEDGAREntity — matching passes', () => {
   });
 
   it('resolves via contains match (pass 3) when no exact or starts-with match', async () => {
+    // 'Software' doesn't start-match 'Washington Software Corp' (Pass 2 fails),
+    // but normaliseName('Washington Software Corp') = 'washington software' which
+    // includes normaliseName('Software') = 'software' — Pass 3 succeeds.
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(
-      jsonResponse(makeSubmissions({ cik: '1018724', name: 'Amazon Holdings LLC' })),
+      jsonResponse(makeSubmissions({ cik: '1018724', name: 'Washington Software Corp' })),
     ));
 
-    const result = await resolveEDGAREntity('Holdings LLC');
-    expect(result!.canonical_name).toBe('Amazon Holdings LLC');
+    const result = await resolveEDGAREntity('Software');
+    expect(result!.canonical_name).toBe('Washington Software Corp');
   });
 
   it('returns null when no match is found in any pass', async () => {

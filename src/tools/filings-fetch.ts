@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { FilingsFetchInput, FilingsFetchSuccessSchema } from '../schemas/filings.js';
 import { getCached, setCache, filingsCacheKey } from '../cache/helpers.js';
-import { generateEntityId, resolveEntityFromCache } from '../resolvers/entity-resolver.js';
+import { generateEntityId, resolveEntityFromCache, MIN_ENTITY_CONFIDENCE } from '../resolvers/entity-resolver.js';
 import { fetchEDGARSubmissions, resolveEDGAREntity } from '../ingest/sources/edgar.js';
 import { fetchCHFilings, resolveCompanyNumber } from '../ingest/sources/companies-house-filings.js';
 import { fetchSEDARFilings } from '../ingest/sources/canada.js';
@@ -133,7 +133,7 @@ export function registerFilingsFetch(server: McpServer): void {
         const knownEntity = await getCached<import('../schemas/entity.js').EntityLookupOutputType>(
           `entity:id:${canonicalId}`,
         );
-        if (!knownEntity || (knownEntity.confidence === 0 && knownEntity.status === 'unknown')) {
+        if (!knownEntity || knownEntity.confidence < MIN_ENTITY_CONFIDENCE || knownEntity.status === 'unknown') {
           return structuredError(
             'ENTITY_NOT_RESOLVED',
             `Entity '${canonicalId}' is not resolved — ` +

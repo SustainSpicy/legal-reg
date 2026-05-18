@@ -82,8 +82,8 @@ export async function lookupSOSEntity(
   jurisdiction: string,
 ): Promise<EntityLookupOutputType | null> {
   if (SCRAPE_ONLY_STATES.includes(jurisdiction)) {
-    // Only available via nightly scraper cache — try OpenCorporates as live fallback
-    return lookupViaOpenCorporates(entityName, jurisdiction).catch(() => null);
+    // Served exclusively from the nightly Playwright scraper cache — never per-request
+    return null;
   }
 
   let result: EntityLookupOutputType | null = null;

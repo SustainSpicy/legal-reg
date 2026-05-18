@@ -39,9 +39,10 @@ function htmlResponse(html: string, ok = true): Response {
 }
 
 function viewstateHtml(): string {
+  // Must use name= (not id=) — collectHiddens() reads the name attribute
   return `<html><body>
-    <input type="hidden" id="__VIEWSTATE" value="vs_test" />
-    <input type="hidden" id="__EVENTVALIDATION" value="ev_test" />
+    <input type="hidden" name="__VIEWSTATE" value="vs_test" />
+    <input type="hidden" name="__EVENTVALIDATION" value="ev_test" />
   </body></html>`;
 }
 
@@ -131,9 +132,13 @@ describe('mapScrapedRecordToEntity', () => {
 // ---- lookupDelawareEntity (ICIS ASPX two-step) ------------------------------
 
 const DE_GRID_HTML = `<html><body>
-<table id="GridViewEntityInformation">
-  <tr><th>File No</th><th>Name</th><th>Status</th><th>Inc Date</th><th>Type</th></tr>
-  <tr><td>1234567</td><td>First State Holdings LLC</td><td>Good Standing</td><td>2002-03-14</td><td>LLC</td></tr>
+<table id="tblResults">
+  <tr><th>File No</th><th>Name</th><th>Status</th></tr>
+  <tr>
+    <td><span id="ctl00_ContentPlaceHolder1_GridView1_ctl02_lblFileNumber">1234567</span></td>
+    <td><a id="ctl00_ContentPlaceHolder1_GridView1_ctl02_lnkbtnEntityName" data-ca="False">First State Holdings LLC</a></td>
+    <td>Good Standing</td>
+  </tr>
 </table>
 </body></html>`;
 
@@ -144,16 +149,25 @@ const DE_DETAIL_HTML = `<html><body>
   <span id="MainContent_IncorporationDate">2002-03-14</span>
 </body></html>`;
 
+const DE_ANNUAL_HTML = `<html><body>
+<table>
+  <tr><td>President</td><td>Jane Smith</td></tr>
+  <tr><td>Secretary</td><td>John Doe</td></tr>
+  <tr><td>Treasurer</td><td>Alice Brown</td></tr>
+</table>
+</body></html>`;
+
 describe('lookupDelawareEntity — ICIS ASPX', () => {
-  it('performs GET (ViewState) then POST (search) then GET (detail)', async () => {
+  it('performs GET (ViewState), POST (search), GET (detail), GET (annual report)', async () => {
     const mockFetch = vi.fn()
       .mockResolvedValueOnce(htmlResponse(viewstateHtml()))   // GET ViewState
       .mockResolvedValueOnce(htmlResponse(DE_GRID_HTML))      // POST search
-      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML));   // GET detail
+      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML))    // GET detail
+      .mockResolvedValueOnce(htmlResponse(DE_ANNUAL_HTML));   // GET annual report
     vi.stubGlobal('fetch', mockFetch);
 
     const result = await lookupDelawareEntity('First State Holdings LLC');
-    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(mockFetch).toHaveBeenCalledTimes(4);
     expect(result).not.toBeNull();
     expect(result!.canonical_name).toBe('First State Holdings LLC');
     expect(result!.jurisdiction).toBe('US-DE');
@@ -161,11 +175,37 @@ describe('lookupDelawareEntity — ICIS ASPX', () => {
     expect(result!.source).toBe('delaware_sos');
   });
 
+  it('source_url is the ICIS annual report permalink for the specific entity', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(htmlResponse(viewstateHtml()))
+      .mockResolvedValueOnce(htmlResponse(DE_GRID_HTML))
+      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML))
+      .mockResolvedValueOnce(htmlResponse(DE_ANNUAL_HTML)));
+
+    const result = await lookupDelawareEntity('First State Holdings LLC');
+    expect(result!.source_url).toContain('AnnualReport.aspx');
+    expect(result!.source_url).toContain('FileNumber=1234567');
+  });
+
+  it('parses officers from the annual report page', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(htmlResponse(viewstateHtml()))
+      .mockResolvedValueOnce(htmlResponse(DE_GRID_HTML))
+      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML))
+      .mockResolvedValueOnce(htmlResponse(DE_ANNUAL_HTML)));
+
+    const result = await lookupDelawareEntity('First State Holdings LLC');
+    expect(result!.officers.length).toBeGreaterThan(0);
+    expect(result!.officers.some((o) => o.role === 'President')).toBe(true);
+    expect(result!.officers.some((o) => o.role === 'Secretary')).toBe(true);
+  });
+
   it('includes ViewState values in the POST body', async () => {
     const mockFetch = vi.fn()
       .mockResolvedValueOnce(htmlResponse(viewstateHtml()))
       .mockResolvedValueOnce(htmlResponse(DE_GRID_HTML))
-      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML));
+      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML))
+      .mockResolvedValueOnce(htmlResponse(DE_ANNUAL_HTML));
     vi.stubGlobal('fetch', mockFetch);
 
     await lookupDelawareEntity('First State Holdings LLC');
@@ -185,18 +225,32 @@ describe('lookupDelawareEntity — ICIS ASPX', () => {
   it('returns null when initial GET fails', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(htmlResponse('', false)));
 
-    await expect(lookupDelawareEntity('Any Corp')).rejects.toThrow('ICIS init failed');
+    const result = await lookupDelawareEntity('Any Corp');
+    expect(result).toBeNull();
   });
 
   it('parses registered agent from detail page', async () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce(htmlResponse(viewstateHtml()))
       .mockResolvedValueOnce(htmlResponse(DE_GRID_HTML))
-      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML)));
+      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML))
+      .mockResolvedValueOnce(htmlResponse(DE_ANNUAL_HTML)));
 
     const result = await lookupDelawareEntity('First State Holdings LLC');
     expect(result!.registered_agent?.name).toBe('National Corporate Research');
     expect(result!.registered_agent?.address).toContain('Dover');
+  });
+
+  it('returns empty officers and does not throw when annual report page is unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(htmlResponse(viewstateHtml()))
+      .mockResolvedValueOnce(htmlResponse(DE_GRID_HTML))
+      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML))
+      .mockResolvedValueOnce(htmlResponse('', false))); // annual report 404
+
+    const result = await lookupDelawareEntity('First State Holdings LLC');
+    expect(result).not.toBeNull();
+    expect(result!.officers).toEqual([]);
   });
 });
 
@@ -298,10 +352,11 @@ describe('lookupNewYorkEntity — Socrata GET', () => {
     expect(result).toBeNull();
   });
 
-  it('throws on HTTP error', async () => {
+  it('returns null on HTTP error (no throw)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ok: false, status: 503 } as unknown as Response));
 
-    await expect(lookupNewYorkEntity('Any Corp')).rejects.toThrow('NY SOS API failed');
+    const result = await lookupNewYorkEntity('Any Corp');
+    expect(result).toBeNull();
   });
 });
 

@@ -5,6 +5,7 @@ import {
   resolveEntityFromCache,
   resolveEntityUpstream,
   generateEntityId,
+  MIN_ENTITY_CONFIDENCE,
 } from '../resolvers/entity-resolver.js';
 import { screenEntity } from '../resolvers/sanctions-matcher.js';
 import { SANCTIONS_LISTS } from '../schemas/sanctions.js';
@@ -84,10 +85,9 @@ export function registerComplianceRiskScore(server: McpServer): void {
         return c ?? resolveEntityUpstream(entity_name, resolvedJurisdiction);
       })();
 
-      // Refuse to score a confidence-0 stub — the entity hasn't been resolved.
-      // This prevents contamination when entity_lookup returned ENTITY_NOT_FOUND
-      // but the caller re-uses the inferred entity_id for downstream calls.
-      if (!entity || (entity.confidence === 0 && entity.status === 'unknown')) {
+      // Refuse to score an unresolved entity — prevents contamination when entity_lookup
+      // returned ENTITY_NOT_FOUND but the caller re-uses the inferred entity_id.
+      if (!entity || entity.confidence < MIN_ENTITY_CONFIDENCE || entity.status === 'unknown') {
         return structuredError(
           'ENTITY_NOT_RESOLVED',
           `Entity '${entity_name ?? canonicalId}' is not resolved — ` +

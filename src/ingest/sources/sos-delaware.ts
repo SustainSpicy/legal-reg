@@ -19,7 +19,23 @@ import type { EntityLookupOutputType } from '../../schemas/entity.js';
 import { lookupViaOpenCorporates } from './opencorporates.js';
 
 const ICIS_URL = 'https://icis.corp.delaware.gov/Ecorp/EntitySearch/NameSearch.aspx';
+const ICIS_ANNUAL_URL = 'https://icis.corp.delaware.gov/Ecorp/AnnualReport/AnnualReport.aspx';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+// Per-process semaphore — prevents IP bans under concurrent load
+let icisActive = 0;
+const ICIS_MAX_CONCURRENT = 2;
+
+async function acquireIcisSlot(): Promise<void> {
+  while (icisActive >= ICIS_MAX_CONCURRENT) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 250));
+  }
+  icisActive++;
+}
+
+function releaseIcisSlot(): void {
+  icisActive = Math.max(0, icisActive - 1);
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -115,6 +131,48 @@ function parseDetailHtml(html: string): DetailInfo {
     registered_agent: agentName ? { name: agentName, address: agentAddr ?? '' } : null,
     status,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Annual report — officers + entity-specific permalink
+// ---------------------------------------------------------------------------
+
+function parseICISOfficers(html: string): EntityLookupOutputType['officers'] {
+  const officers: EntityLookupOutputType['officers'] = [];
+  const roles = ['President', 'Vice President', 'Secretary', 'Treasurer', 'Director'];
+
+  // Pattern 1: two-cell table rows — <td>Role</td><td>Name</td>
+  for (const role of roles) {
+    const re = new RegExp(`<td[^>]*>\\s*${role}\\s*</td>\\s*<td[^>]*>([^<]+)</td>`, 'i');
+    const m = re.exec(html);
+    if (m?.[1]) {
+      const name = m[1].trim();
+      if (name.length > 2) officers.push({ name, role, since: null });
+    }
+  }
+  if (officers.length > 0) return officers;
+
+  // Pattern 2: adjacent labeled spans
+  const re2 = /<span[^>]*>\s*(President|Vice President|Secretary|Treasurer)\s*<\/span>\s*[^<]*<span[^>]*>([^<]{2,})<\/span>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re2.exec(html)) !== null) {
+    const role = m[1]!.trim();
+    const name = m[2]!.trim();
+    if (name) officers.push({ name, role, since: null });
+  }
+  return officers;
+}
+
+async function fetchAnnualReportOfficers(
+  fileNumber: string,
+  cookies: string,
+): Promise<EntityLookupOutputType['officers']> {
+  const res = await fetch(`${ICIS_ANNUAL_URL}?FileNumber=${encodeURIComponent(fileNumber)}`, {
+    headers: { 'User-Agent': UA, 'Accept': 'text/html,*/*;q=0.8', 'Cookie': cookies },
+  }).catch(() => null);
+  if (!res?.ok) return [];
+  const html = await res.text().catch(() => '');
+  return parseICISOfficers(html);
 }
 
 // ---------------------------------------------------------------------------
@@ -246,6 +304,13 @@ async function lookupDelawareEntityViaICIS(entityName: string): Promise<EntityLo
     }));
   }
 
+  // Step 4: annual report — officers + entity-specific source_url (best-effort, non-blocking)
+  const fileNumber = best.r.file_number;
+  const [officers, sourceUrl] = await Promise.all([
+    fetchAnnualReportOfficers(fileNumber, allCookies).catch(() => []),
+    Promise.resolve(`${ICIS_ANNUAL_URL}?FileNumber=${encodeURIComponent(fileNumber)}`),
+  ]);
+
   const status = detail.status ?? best.r.status;
 
   return {
@@ -255,9 +320,9 @@ async function lookupDelawareEntityViaICIS(entityName: string): Promise<EntityLo
     status,
     incorporated_at: detail.incorporated_at ?? null,
     registered_agent: detail.registered_agent ?? null,
-    officers: [],
+    officers,
     source: 'delaware_sos',
-    source_url: `https://icis.corp.delaware.gov/Ecorp/EntitySearch/NameSearch.aspx`,
+    source_url: sourceUrl,
     freshness_secs: 0,
     confidence: best.score,
     data_freshness: 'fresh',
@@ -275,6 +340,12 @@ export async function lookupDelawareEntity(entityName: string): Promise<EntityLo
     if (ocResult) return ocResult;
   }
 
-  // Direct ICIS scrape — 3-step flow (GET form → POST search → POST detail)
-  return lookupDelawareEntityViaICIS(entityName).catch(() => null);
+  // Direct ICIS scrape — 4-step flow (GET form → POST search → POST detail → GET annual report)
+  // Rate-limited to ICIS_MAX_CONCURRENT concurrent requests to prevent IP bans
+  await acquireIcisSlot();
+  try {
+    return await lookupDelawareEntityViaICIS(entityName).catch(() => null);
+  } finally {
+    releaseIcisSlot();
+  }
 }
