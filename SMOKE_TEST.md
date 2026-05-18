@@ -19,7 +19,7 @@ Playwright is already installed as a dependency; no separate install needed.
 npm test
 ```
 
-Expected: **all tests pass** (348 tests across 21 suites). These cover:
+Expected: **all tests pass** (351 tests across 21 suites). These cover:
 - ICIS 3-step DE scraper logic
 - SOS sources: CA, NY, TX, FL, CO, WA, IL, GA
 - Entity-ID contamination guards (`MIN_ENTITY_CONFIDENCE = 0.7`)

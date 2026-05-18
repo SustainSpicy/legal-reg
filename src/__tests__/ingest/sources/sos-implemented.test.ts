@@ -143,31 +143,25 @@ const DE_GRID_HTML = `<html><body>
 </body></html>`;
 
 const DE_DETAIL_HTML = `<html><body>
-  <span id="MainContent_RegisteredAgent">National Corporate Research</span>
-  <span id="MainContent_RegisteredOffice">850 New Burton Rd, Dover, DE 19904</span>
-  <span id="MainContent_EntityStatus">Good Standing</span>
-  <span id="MainContent_IncorporationDate">2002-03-14</span>
-</body></html>`;
-
-const DE_ANNUAL_HTML = `<html><body>
-<table>
-  <tr><td>President</td><td>Jane Smith</td></tr>
-  <tr><td>Secretary</td><td>John Doe</td></tr>
-  <tr><td>Treasurer</td><td>Alice Brown</td></tr>
-</table>
+  <span id="ctl00_ContentPlaceHolder1_lblAgentName">National Corporate Research</span>
+  <span id="ctl00_ContentPlaceHolder1_lblAgentAddress1">850 New Burton Rd</span>
+  <span id="ctl00_ContentPlaceHolder1_lblAgentCity">Dover</span>
+  <span id="ctl00_ContentPlaceHolder1_lblAgentState">DE</span>
+  <span id="ctl00_ContentPlaceHolder1_lblAgentPostalCode">19904</span>
+  <span id="ctl00_ContentPlaceHolder1_lblIncDate">2002-03-14</span>
+  <p>GOOD STANDING</p>
 </body></html>`;
 
 describe('lookupDelawareEntity — ICIS ASPX', () => {
-  it('performs GET (ViewState), POST (search), GET (detail), GET (annual report)', async () => {
+  it('performs GET (ViewState) then POST (search) then POST (detail) — 3 fetch calls', async () => {
     const mockFetch = vi.fn()
       .mockResolvedValueOnce(htmlResponse(viewstateHtml()))   // GET ViewState
       .mockResolvedValueOnce(htmlResponse(DE_GRID_HTML))      // POST search
-      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML))    // GET detail
-      .mockResolvedValueOnce(htmlResponse(DE_ANNUAL_HTML));   // GET annual report
+      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML));   // POST detail
     vi.stubGlobal('fetch', mockFetch);
 
     const result = await lookupDelawareEntity('First State Holdings LLC');
-    expect(mockFetch).toHaveBeenCalledTimes(4);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
     expect(result).not.toBeNull();
     expect(result!.canonical_name).toBe('First State Holdings LLC');
     expect(result!.jurisdiction).toBe('US-DE');
@@ -175,37 +169,22 @@ describe('lookupDelawareEntity — ICIS ASPX', () => {
     expect(result!.source).toBe('delaware_sos');
   });
 
-  it('source_url is the ICIS annual report permalink for the specific entity', async () => {
+  it('source_url is the direct ICIS entity permalink (SearchDetailsPage.aspx?i=fileNumber)', async () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce(htmlResponse(viewstateHtml()))
       .mockResolvedValueOnce(htmlResponse(DE_GRID_HTML))
-      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML))
-      .mockResolvedValueOnce(htmlResponse(DE_ANNUAL_HTML)));
+      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML)));
 
     const result = await lookupDelawareEntity('First State Holdings LLC');
-    expect(result!.source_url).toContain('AnnualReport.aspx');
-    expect(result!.source_url).toContain('FileNumber=1234567');
-  });
-
-  it('parses officers from the annual report page', async () => {
-    vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce(htmlResponse(viewstateHtml()))
-      .mockResolvedValueOnce(htmlResponse(DE_GRID_HTML))
-      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML))
-      .mockResolvedValueOnce(htmlResponse(DE_ANNUAL_HTML)));
-
-    const result = await lookupDelawareEntity('First State Holdings LLC');
-    expect(result!.officers.length).toBeGreaterThan(0);
-    expect(result!.officers.some((o) => o.role === 'President')).toBe(true);
-    expect(result!.officers.some((o) => o.role === 'Secretary')).toBe(true);
+    expect(result!.source_url).toContain('SearchDetailsPage.aspx');
+    expect(result!.source_url).toContain('i=1234567');
   });
 
   it('includes ViewState values in the POST body', async () => {
     const mockFetch = vi.fn()
       .mockResolvedValueOnce(htmlResponse(viewstateHtml()))
       .mockResolvedValueOnce(htmlResponse(DE_GRID_HTML))
-      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML))
-      .mockResolvedValueOnce(htmlResponse(DE_ANNUAL_HTML));
+      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML));
     vi.stubGlobal('fetch', mockFetch);
 
     await lookupDelawareEntity('First State Holdings LLC');
@@ -229,27 +208,34 @@ describe('lookupDelawareEntity — ICIS ASPX', () => {
     expect(result).toBeNull();
   });
 
-  it('parses registered agent from detail page', async () => {
+  it('parses registered agent and address from detail page using real ICIS span IDs', async () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce(htmlResponse(viewstateHtml()))
       .mockResolvedValueOnce(htmlResponse(DE_GRID_HTML))
-      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML))
-      .mockResolvedValueOnce(htmlResponse(DE_ANNUAL_HTML)));
+      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML)));
 
     const result = await lookupDelawareEntity('First State Holdings LLC');
     expect(result!.registered_agent?.name).toBe('National Corporate Research');
     expect(result!.registered_agent?.address).toContain('Dover');
   });
 
-  it('returns empty officers and does not throw when annual report page is unavailable', async () => {
+  it('parses incorporation date from lblIncDate span', async () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce(htmlResponse(viewstateHtml()))
       .mockResolvedValueOnce(htmlResponse(DE_GRID_HTML))
-      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML))
-      .mockResolvedValueOnce(htmlResponse('', false))); // annual report 404
+      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML)));
 
     const result = await lookupDelawareEntity('First State Holdings LLC');
-    expect(result).not.toBeNull();
+    expect(result!.incorporated_at).toBe('2002-03-14');
+  });
+
+  it('officers is always empty — ICIS does not expose officer data publicly', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(htmlResponse(viewstateHtml()))
+      .mockResolvedValueOnce(htmlResponse(DE_GRID_HTML))
+      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML)));
+
+    const result = await lookupDelawareEntity('First State Holdings LLC');
     expect(result!.officers).toEqual([]);
   });
 });

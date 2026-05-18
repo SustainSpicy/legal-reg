@@ -19,7 +19,9 @@ import type { EntityLookupOutputType } from '../../schemas/entity.js';
 import { lookupViaOpenCorporates } from './opencorporates.js';
 
 const ICIS_URL = 'https://icis.corp.delaware.gov/Ecorp/EntitySearch/NameSearch.aspx';
-const ICIS_ANNUAL_URL = 'https://icis.corp.delaware.gov/Ecorp/AnnualReport/AnnualReport.aspx';
+// Direct entity permalink — discovered from form action="SearchDetailsPage.aspx?i={fileNumber}"
+// in the detail postback response. Stable per-entity deep link.
+const ICIS_DETAIL_URL = 'https://icis.corp.delaware.gov/Ecorp/EntitySearch/SearchDetailsPage.aspx';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 // Per-process semaphore — prevents IP bans under concurrent load
@@ -104,75 +106,35 @@ interface DetailInfo {
 }
 
 function parseDetailHtml(html: string): DetailInfo {
-  // Detail page span IDs vary — try several patterns
-  const agentM = /<span[^>]*(?:RegisteredAgent|Resident\s*Agent)[^>]*>([^<]+)<\/span>/i.exec(html)
-    ?? /<td[^>]*>Registered\s*Agent<\/td>\s*<td[^>]*>([^<]+)<\/td>/i.exec(html);
-  const officeM = /<span[^>]*(?:RegisteredOffice|Resident\s*Office)[^>]*>([^<]+)<\/span>/i.exec(html)
-    ?? /<td[^>]*>Registered\s*Office<\/td>\s*<td[^>]*>([^<]+)<\/td>/i.exec(html);
-  const statusM = /<span[^>]*EntityStatus[^>]*>([^<]+)<\/span>/i.exec(html)
-    ?? /<td[^>]*>Entity\s*Status<\/td>\s*<td[^>]*>([^<]+)<\/td>/i.exec(html);
-  const incM = /<span[^>]*(?:IncorporationDate|DateOfFormation)[^>]*>([^<]+)<\/span>/i.exec(html)
-    ?? /<td[^>]*>(?:Incorporation|Formation)\s*Date<\/td>\s*<td[^>]*>([^<]+)<\/td>/i.exec(html);
-
-  const agentName = agentM?.[1]?.trim() ?? null;
-  const agentAddr = officeM?.[1]?.trim() ?? null;
-
-  const rawStatus = statusM?.[1]?.trim().toLowerCase() ?? '';
-  let status: EntityLookupOutputType['status'] | null = null;
-  if (rawStatus) {
-    if (rawStatus.includes('good standing') || rawStatus === 'active') status = 'active';
-    else if (rawStatus.includes('void') || rawStatus.includes('cancel') || rawStatus.includes('dissol')) status = 'dissolved';
-    else if (rawStatus.includes('suspend')) status = 'suspended';
-    else status = 'unknown';
+  // ICIS detail page uses ContentPlaceHolder1 lbl* span IDs (confirmed against live 2025 HTML).
+  // The form action on the detail page is SearchDetailsPage.aspx?i={fileNumber}, which gives
+  // us the stable per-entity permalink used as source_url.
+  function spanVal(id: string): string | null {
+    const re = new RegExp(`id="${id}"[^>]*>([^<]*)<`, 'i');
+    return re.exec(html)?.[1]?.trim() || null;
   }
 
+  const agentName = spanVal('ctl00_ContentPlaceHolder1_lblAgentName');
+  const addr1     = spanVal('ctl00_ContentPlaceHolder1_lblAgentAddress1');
+  const city      = spanVal('ctl00_ContentPlaceHolder1_lblAgentCity');
+  const state     = spanVal('ctl00_ContentPlaceHolder1_lblAgentState');
+  const zip       = spanVal('ctl00_ContentPlaceHolder1_lblAgentPostalCode');
+  const incDate   = spanVal('ctl00_ContentPlaceHolder1_lblIncDate');
+
+  const addressParts = [addr1, city, state, zip].filter(Boolean);
+  const agentAddr = addressParts.length > 0 ? addressParts.join(', ') : null;
+
+  // Status is rendered as visible text — ICIS uses "GOOD STANDING", "VOID", etc.
+  let status: EntityLookupOutputType['status'] | null = null;
+  if (/good standing/i.test(html)) status = 'active';
+  else if (/\b(?:void|cancel|dissol)/i.test(html)) status = 'dissolved';
+  else if (/suspend/i.test(html)) status = 'suspended';
+
   return {
-    incorporated_at: incM?.[1]?.trim() ?? null,
+    incorporated_at: incDate,
     registered_agent: agentName ? { name: agentName, address: agentAddr ?? '' } : null,
     status,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Annual report — officers + entity-specific permalink
-// ---------------------------------------------------------------------------
-
-function parseICISOfficers(html: string): EntityLookupOutputType['officers'] {
-  const officers: EntityLookupOutputType['officers'] = [];
-  const roles = ['President', 'Vice President', 'Secretary', 'Treasurer', 'Director'];
-
-  // Pattern 1: two-cell table rows — <td>Role</td><td>Name</td>
-  for (const role of roles) {
-    const re = new RegExp(`<td[^>]*>\\s*${role}\\s*</td>\\s*<td[^>]*>([^<]+)</td>`, 'i');
-    const m = re.exec(html);
-    if (m?.[1]) {
-      const name = m[1].trim();
-      if (name.length > 2) officers.push({ name, role, since: null });
-    }
-  }
-  if (officers.length > 0) return officers;
-
-  // Pattern 2: adjacent labeled spans
-  const re2 = /<span[^>]*>\s*(President|Vice President|Secretary|Treasurer)\s*<\/span>\s*[^<]*<span[^>]*>([^<]{2,})<\/span>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = re2.exec(html)) !== null) {
-    const role = m[1]!.trim();
-    const name = m[2]!.trim();
-    if (name) officers.push({ name, role, since: null });
-  }
-  return officers;
-}
-
-async function fetchAnnualReportOfficers(
-  fileNumber: string,
-  cookies: string,
-): Promise<EntityLookupOutputType['officers']> {
-  const res = await fetch(`${ICIS_ANNUAL_URL}?FileNumber=${encodeURIComponent(fileNumber)}`, {
-    headers: { 'User-Agent': UA, 'Accept': 'text/html,*/*;q=0.8', 'Cookie': cookies },
-  }).catch(() => null);
-  if (!res?.ok) return [];
-  const html = await res.text().catch(() => '');
-  return parseICISOfficers(html);
 }
 
 // ---------------------------------------------------------------------------
@@ -296,7 +258,7 @@ async function lookupDelawareEntityViaICIS(entityName: string): Promise<EntityLo
 
   const best = scored[0]!;
 
-  // Step 3: detail postback for registered_agent + incorporated_at
+  // Step 3: detail postback for registered_agent + incorporated_at + status
   let detail: DetailInfo = { incorporated_at: null, registered_agent: null, status: null };
   if (best.r.event_target) {
     detail = await fetchICISDetail(searchHtml, allCookies, best.r).catch(() => ({
@@ -304,14 +266,9 @@ async function lookupDelawareEntityViaICIS(entityName: string): Promise<EntityLo
     }));
   }
 
-  // Step 4: annual report — officers + entity-specific source_url (best-effort, non-blocking)
-  const fileNumber = best.r.file_number;
-  const [officers, sourceUrl] = await Promise.all([
-    fetchAnnualReportOfficers(fileNumber, allCookies).catch(() => []),
-    Promise.resolve(`${ICIS_ANNUAL_URL}?FileNumber=${encodeURIComponent(fileNumber)}`),
-  ]);
-
   const status = detail.status ?? best.r.status;
+  // Direct entity permalink — form action on detail page is SearchDetailsPage.aspx?i={fileNumber}
+  const sourceUrl = `${ICIS_DETAIL_URL}?i=${encodeURIComponent(best.r.file_number)}`;
 
   return {
     entity_id: generateEntityId('US-DE', best.r.entity_name),
@@ -320,7 +277,7 @@ async function lookupDelawareEntityViaICIS(entityName: string): Promise<EntityLo
     status,
     incorporated_at: detail.incorporated_at ?? null,
     registered_agent: detail.registered_agent ?? null,
-    officers,
+    officers: [], // ICIS does not expose officer data via its public search interface
     source: 'delaware_sos',
     source_url: sourceUrl,
     freshness_secs: 0,
@@ -340,7 +297,7 @@ export async function lookupDelawareEntity(entityName: string): Promise<EntityLo
     if (ocResult) return ocResult;
   }
 
-  // Direct ICIS scrape — 4-step flow (GET form → POST search → POST detail → GET annual report)
+  // Direct ICIS scrape — 3-step flow (GET form → POST search → POST detail)
   // Rate-limited to ICIS_MAX_CONCURRENT concurrent requests to prevent IP bans
   await acquireIcisSlot();
   try {
