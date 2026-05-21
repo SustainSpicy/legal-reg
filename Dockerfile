@@ -45,7 +45,7 @@ COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD curl -fs http://localhost:3000/health || exit 1
 
 CMD ["node", "dist/src/index.js"]

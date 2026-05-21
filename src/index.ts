@@ -69,8 +69,13 @@ async function main(): Promise<void> {
   validateEnv();
   await connectRedis();
 
-  // Pre-warm sanctions cache on startup; cron keeps it fresh thereafter
-  await runSanctionsIngest();
+  // Start background ingest tasks without blocking the HTTP server.
+  // The server must accept connections (and pass health checks) immediately
+  // after Redis connects — awaiting ingest here causes cold-start downtime
+  // because the uptime monitor sees connection refused, not a graceful 503.
+  void runSanctionsIngest().catch((err: unknown) =>
+    logger.error({ err }, 'Sanctions ingest failed on startup — will retry on next cron tick'),
+  );
 
   startSanctionsIngestCron();
   startSOSIngestCron();
