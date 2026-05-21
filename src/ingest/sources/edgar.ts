@@ -13,6 +13,7 @@ const SUBMISSIONS_BASE = 'https://data.sec.gov/submissions';
 const TICKERS_URL = 'https://www.sec.gov/files/company_tickers.json';
 const TICKERS_CACHE_KEY = 'edgar:company_tickers';
 const TICKERS_TTL = 86400; // 24h — tickers file changes infrequently
+const EDGAR_TIMEOUT_MS = 10_000;
 
 function edgarHeaders(): Record<string, string> {
   const contact = process.env['EDGAR_CONTACT_EMAIL'] ?? 'compliance@corpsignal.io';
@@ -45,7 +46,7 @@ async function loadTickerMap(): Promise<Record<string, TickerEntry>> {
   const cached = await getCached<Record<string, TickerEntry>>(TICKERS_CACHE_KEY);
   if (cached) return cached;
 
-  const res = await fetch(TICKERS_URL, { headers: edgarHeaders() });
+  const res = await fetch(TICKERS_URL, { headers: edgarHeaders(), signal: AbortSignal.timeout(EDGAR_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`EDGAR tickers fetch failed: ${res.status}`);
   const data = await res.json() as Record<string, TickerEntry>;
   await setCache(TICKERS_CACHE_KEY, data, TICKERS_TTL);
@@ -55,7 +56,7 @@ async function loadTickerMap(): Promise<Record<string, TickerEntry>> {
 export async function fetchEDGARSubmissions(cik: string): Promise<EDGARSubmissions | null> {
   const paddedCik = cik.padStart(10, '0');
   const url = `${SUBMISSIONS_BASE}/CIK${paddedCik}.json`;
-  const res = await fetch(url, { headers: edgarHeaders() });
+  const res = await fetch(url, { headers: edgarHeaders(), signal: AbortSignal.timeout(EDGAR_TIMEOUT_MS) });
   if (!res.ok) return null;
   return res.json() as Promise<EDGARSubmissions>;
 }

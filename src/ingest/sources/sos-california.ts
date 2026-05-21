@@ -15,6 +15,8 @@ import type { EntityLookupOutputType } from '../../schemas/entity.js';
 
 const CA_SEARCH_URL = 'https://bizfileonline.sos.ca.gov/api/Records/businesssearch';
 const CA_SEARCH_PAGE = 'https://bizfileonline.sos.ca.gov/search/business';
+// Fail fast so the caller can fall through to EDGAR quickly on WAF block
+const BIZFILE_TIMEOUT_MS = 5_000;
 
 interface CASearchResult {
   CORP_NUM: string;
@@ -110,6 +112,7 @@ async function fetchViaHttp(entityName: string): Promise<EntityLookupOutputType 
       'Sec-Fetch-Dest': 'empty',
     },
     body: buildSearchBody(entityName),
+    signal: AbortSignal.timeout(BIZFILE_TIMEOUT_MS),
   }).catch(() => null);
 
   if (!res?.ok) {

@@ -23,6 +23,8 @@ const ICIS_URL = 'https://icis.corp.delaware.gov/Ecorp/EntitySearch/NameSearch.a
 // in the detail postback response. Stable per-entity deep link.
 const ICIS_DETAIL_URL = 'https://icis.corp.delaware.gov/Ecorp/EntitySearch/SearchDetailsPage.aspx';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+// Per-step timeout — 3 steps × 8 s = 24 s max, keeping chained calls under 30 s
+const ICIS_STEP_TIMEOUT_MS = 8_000;
 
 // Per-process semaphore — prevents IP bans under concurrent load
 let icisActive = 0;
@@ -145,6 +147,7 @@ export async function searchDelawareEntities(entityName: string): Promise<ICISRe
   // Step 1: GET — acquire session cookie + VIEWSTATE
   const initRes = await fetch(ICIS_URL, {
     headers: { 'User-Agent': UA, 'Accept': 'text/html,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' },
+    signal: AbortSignal.timeout(ICIS_STEP_TIMEOUT_MS),
   });
   if (!initRes.ok) throw new Error(`ICIS init failed: ${initRes.status}`);
   const cookies1 = parseCookies(initRes.headers);
@@ -171,6 +174,7 @@ export async function searchDelawareEntities(entityName: string): Promise<ICISRe
       'Cookie': cookies1,
     },
     body: searchBody.toString(),
+    signal: AbortSignal.timeout(ICIS_STEP_TIMEOUT_MS),
   });
   if (!searchRes.ok) throw new Error(`ICIS search failed: ${searchRes.status}`);
   const searchHtml = await searchRes.text();
@@ -204,6 +208,7 @@ async function fetchICISDetail(
       'Cookie': searchCookies,
     },
     body: detailBody.toString(),
+    signal: AbortSignal.timeout(ICIS_STEP_TIMEOUT_MS),
   });
   if (!detailRes.ok) return { incorporated_at: null, registered_agent: null, status: null };
 
@@ -218,6 +223,7 @@ async function lookupDelawareEntityViaICIS(entityName: string): Promise<EntityLo
   // Step 1+2: GET + search POST
   const initRes = await fetch(ICIS_URL, {
     headers: { 'User-Agent': UA, 'Accept': 'text/html,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' },
+    signal: AbortSignal.timeout(ICIS_STEP_TIMEOUT_MS),
   });
   if (!initRes.ok) throw new Error(`ICIS init failed: ${initRes.status}`);
   const cookies1 = parseCookies(initRes.headers);
@@ -248,6 +254,7 @@ async function lookupDelawareEntityViaICIS(entityName: string): Promise<EntityLo
       'Referer': ICIS_URL, 'Origin': 'https://icis.corp.delaware.gov', 'Cookie': cookies1,
     },
     body: searchBody.toString(),
+    signal: AbortSignal.timeout(ICIS_STEP_TIMEOUT_MS),
   });
   if (!searchRes.ok) throw new Error(`ICIS search failed: ${searchRes.status}`);
 
