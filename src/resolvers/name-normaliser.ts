@@ -21,7 +21,9 @@ export function normaliseName(raw: string): string {
   while (changed) {
     changed = false;
     for (const suffix of LEGAL_SUFFIXES) {
-      const pattern = new RegExp(`\\b${suffix}\\s*$`);
+      // Escape dots so "b.v" matches only "b.v", not "bov" or "b3v"
+      const escaped = suffix.replace(/\./g, '\\.');
+      const pattern = new RegExp(`\\b${escaped}\\s*$`);
       if (pattern.test(name)) {
         name = name.replace(pattern, '').trim();
         changed = true;
