@@ -224,9 +224,18 @@ async function lookupDelawareEntityViaICIS(entityName: string): Promise<EntityLo
   const initHtml = await initRes.text();
   const hiddens1 = collectHiddens(initHtml);
 
+  // Search with suffix-stripped base name so ICIS returns the canonical parent entity.
+  // "Tesla Inc" → "Tesla" ensures "TESLA, INC." appears in results alongside subsidiaries;
+  // we then require an exact normalized match to select — rejecting SPVs and unrelated entities.
+  const normBase = normaliseName(entityName);
+  const searchTerm = normBase
+    .split(' ')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ') || entityName;
+
   const searchBody = new URLSearchParams({
     ...hiddens1,
-    'ctl00$ContentPlaceHolder1$frmEntityName': entityName,
+    'ctl00$ContentPlaceHolder1$frmEntityName': searchTerm,
     'ctl00$ContentPlaceHolder1$btnSubmit': 'Search',
     'email_confirm': '',
   });
@@ -249,30 +258,27 @@ async function lookupDelawareEntityViaICIS(entityName: string): Promise<EntityLo
   const results = parseSearchResults(searchHtml);
   if (results.length === 0) return null;
 
-  // Pick best match by name similarity
+  // Require exact normalized match — a fuzzy first-hit produces wrong entities
+  // (e.g. "Tesla Inc" → "TESLA 2014 WAREHOUSE SPV LLC" instead of "TESLA, INC.")
   const normQuery = normaliseName(entityName);
-  const scored = results.map((r) => ({
-    r,
-    score: normaliseName(r.entity_name) === normQuery ? 1.0 : 0.85,
-  })).sort((a, b) => b.score - a.score);
-
-  const best = scored[0]!;
+  const exactMatch = results.find((r) => normaliseName(r.entity_name) === normQuery);
+  if (!exactMatch) return null;
 
   // Step 3: detail postback for registered_agent + incorporated_at + status
   let detail: DetailInfo = { incorporated_at: null, registered_agent: null, status: null };
-  if (best.r.event_target) {
-    detail = await fetchICISDetail(searchHtml, allCookies, best.r).catch(() => ({
+  if (exactMatch.event_target) {
+    detail = await fetchICISDetail(searchHtml, allCookies, exactMatch).catch(() => ({
       incorporated_at: null, registered_agent: null, status: null,
     }));
   }
 
-  const status = detail.status ?? best.r.status;
+  const status = detail.status ?? exactMatch.status;
   // Direct entity permalink — form action on detail page is SearchDetailsPage.aspx?i={fileNumber}
-  const sourceUrl = `${ICIS_DETAIL_URL}?i=${encodeURIComponent(best.r.file_number)}`;
+  const sourceUrl = `${ICIS_DETAIL_URL}?i=${encodeURIComponent(exactMatch.file_number)}`;
 
   return {
-    entity_id: generateEntityId('US-DE', best.r.entity_name),
-    canonical_name: best.r.entity_name,
+    entity_id: generateEntityId('US-DE', exactMatch.entity_name),
+    canonical_name: exactMatch.entity_name,
     jurisdiction: 'US-DE',
     status,
     incorporated_at: detail.incorporated_at ?? null,
@@ -281,7 +287,7 @@ async function lookupDelawareEntityViaICIS(entityName: string): Promise<EntityLo
     source: 'delaware_sos',
     source_url: sourceUrl,
     freshness_secs: 0,
-    confidence: best.score,
+    confidence: 1.0,
     data_freshness: 'fresh',
   };
 }

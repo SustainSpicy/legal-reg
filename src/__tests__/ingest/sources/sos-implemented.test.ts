@@ -238,6 +238,72 @@ describe('lookupDelawareEntity — ICIS ASPX', () => {
     const result = await lookupDelawareEntity('First State Holdings LLC');
     expect(result!.officers).toEqual([]);
   });
+
+  it('uses suffix-stripped base name as ICIS search term', async () => {
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce(htmlResponse(viewstateHtml()))
+      .mockResolvedValueOnce(htmlResponse(DE_GRID_HTML))
+      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML));
+    vi.stubGlobal('fetch', mockFetch);
+
+    await lookupDelawareEntity('First State Holdings LLC');
+    const postBody = mockFetch.mock.calls[1]![1]?.body as string;
+    // normaliseName("First State Holdings LLC") → "first state" (strips Holdings, LLC)
+    // title-cased → "First State" sent to ICIS, not the full name with suffixes
+    expect(postBody).toContain('First+State');
+    expect(postBody).not.toContain('Holdings');
+  });
+
+  it('returns null when ICIS results contain only fuzzy matches (no exact normalized match)', async () => {
+    const fuzzyOnlyHtml = `<html><body>
+    <table id="tblResults">
+      <tr><th>File No</th><th>Name</th><th>Status</th></tr>
+      <tr>
+        <td><span id="ctl00_ContentPlaceHolder1_GridView1_ctl02_lblFileNumber">5567943</span></td>
+        <td><a id="ctl00_ContentPlaceHolder1_GridView1_ctl02_lnkbtnEntityName" data-ca="False">FIRST STATE 2019 WAREHOUSE SPV LLC</a></td>
+        <td>Good Standing</td>
+      </tr>
+    </table>
+    </body></html>`;
+
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(htmlResponse(viewstateHtml()))
+      .mockResolvedValueOnce(htmlResponse(fuzzyOnlyHtml)));
+
+    // "First State Holdings LLC" normalises to "first state"
+    // "FIRST STATE 2019 WAREHOUSE SPV LLC" normalises to "first state 2019 warehouse spv" — no match
+    const result = await lookupDelawareEntity('First State Holdings LLC');
+    expect(result).toBeNull();
+  });
+
+  it('selects exact match and ignores fuzzy hits when multiple results are present', async () => {
+    const multiResultHtml = `<html><body>
+    <table id="tblResults">
+      <tr><th>File No</th><th>Name</th><th>Status</th></tr>
+      <tr>
+        <td><span id="ctl00_ContentPlaceHolder1_GridView1_ctl02_lblFileNumber">9999001</span></td>
+        <td><a id="ctl00_ContentPlaceHolder1_GridView1_ctl02_lnkbtnEntityName" data-ca="False">FIRST STATE 2019 WAREHOUSE SPV LLC</a></td>
+        <td>Good Standing</td>
+      </tr>
+      <tr>
+        <td><span id="ctl00_ContentPlaceHolder1_GridView1_ctl03_lblFileNumber">1234567</span></td>
+        <td><a id="ctl00_ContentPlaceHolder1_GridView1_ctl03_lnkbtnEntityName" data-ca="False">First State Holdings LLC</a></td>
+        <td>Good Standing</td>
+      </tr>
+    </table>
+    </body></html>`;
+
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(htmlResponse(viewstateHtml()))
+      .mockResolvedValueOnce(htmlResponse(multiResultHtml))
+      .mockResolvedValueOnce(htmlResponse(DE_DETAIL_HTML)));
+
+    const result = await lookupDelawareEntity('First State Holdings LLC');
+    expect(result).not.toBeNull();
+    expect(result!.canonical_name).toBe('First State Holdings LLC');
+    // Must pick file 1234567 (exact match), not 9999001 (SPV fuzzy hit)
+    expect(result!.source_url).toContain('i=1234567');
+  });
 });
 
 // ---- lookupCaliforniaEntity (BizFile JSON POST) -----------------------------
