@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { FilingsFetchInput, FilingsFetchSuccessSchema } from '../schemas/filings.js';
 import { getCached, setCache, filingsCacheKey } from '../cache/helpers.js';
-import { generateEntityId, resolveEntityFromCache, MIN_ENTITY_CONFIDENCE } from '../resolvers/entity-resolver.js';
+import { generateEntityId, resolveEntityFromCache, resolveEntityUpstream, MIN_ENTITY_CONFIDENCE, SOS_PORTAL_LIVE } from '../resolvers/entity-resolver.js';
 import { fetchEDGARSubmissions, resolveEDGAREntity } from '../ingest/sources/edgar.js';
 import { fetchCHFilings, resolveCompanyNumber } from '../ingest/sources/companies-house-filings.js';
 import { fetchSEDARFilings } from '../ingest/sources/canada.js';
@@ -156,7 +156,7 @@ export function registerFilingsFetch(server: McpServer): void {
         };
       }
 
-      const entityData = entity_name
+      let entityData = entity_name
         ? await resolveEntityFromCache(entity_name, resolvedJurisdiction)
         : null;
       const canonicalName = entityData?.canonical_name ?? entity_name ?? canonicalId;
@@ -194,6 +194,22 @@ export function registerFilingsFetch(server: McpServer): void {
         totalAvailable = sedarTotal;
         source = 'sedar';
       } else {
+        // SOS_PORTAL_LIVE gate: for states with a live SOS portal, entity_name must be
+        // confirmed by the SOS before EDGAR filings are returned. Without this gate,
+        // filings_fetch mints a US-DE entity_id on EDGAR data for companies like Apple
+        // that entity_lookup correctly denies exist in Delaware.
+        if (entity_name && !entity_id && SOS_PORTAL_LIVE.has(resolvedJurisdiction)) {
+          const sosCheck = entityData ?? await resolveEntityUpstream(entity_name, resolvedJurisdiction);
+          if (sosCheck.confidence < MIN_ENTITY_CONFIDENCE) {
+            return structuredError(
+              'ENTITY_NOT_FOUND',
+              `No entity found for '${entity_name}' in ${resolvedJurisdiction}. ` +
+              `This entity may be registered in a different jurisdiction.`,
+            );
+          }
+          entityData = sosCheck;
+        }
+
         // EDGAR for US public companies — requires entity_name for live lookup
         const edgarEntity = entity_name ? await resolveEDGAREntity(entity_name) : null;
         if (edgarEntity) {

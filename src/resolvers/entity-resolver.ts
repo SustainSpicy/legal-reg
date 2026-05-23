@@ -88,7 +88,7 @@ export const MIN_ENTITY_CONFIDENCE = 0.7;
 //
 // US-CA is intentionally absent: BizFile is blocked by Incapsula WAF, making
 // EDGAR the only viable path for CA-incorporated public companies.
-const SOS_PORTAL_LIVE = new Set([
+export const SOS_PORTAL_LIVE = new Set([
   'US-DE', // ICIS
   'US-NY', // NY DOS Socrata
   'US-TX', // TX Comptroller Socrata

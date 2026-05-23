@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockGetCached = vi.hoisted(() => vi.fn());
 const mockSetCache = vi.hoisted(() => vi.fn());
 const mockResolveEntityFromCache = vi.hoisted(() => vi.fn());
+const mockResolveEntityUpstream = vi.hoisted(() => vi.fn());
 const mockFetchEDGARSubmissions = vi.hoisted(() => vi.fn());
 const mockResolveEDGAREntity = vi.hoisted(() => vi.fn());
 const mockFetchCHFilings = vi.hoisted(() => vi.fn());
@@ -19,6 +20,9 @@ vi.mock('../../resolvers/entity-resolver.js', () => ({
   generateEntityId: (_jur: string, name: string) =>
     `corpsig_test_${name.toLowerCase().replace(/\s+/g, '_')}`,
   resolveEntityFromCache: mockResolveEntityFromCache,
+  resolveEntityUpstream: mockResolveEntityUpstream,
+  MIN_ENTITY_CONFIDENCE: 0.7,
+  SOS_PORTAL_LIVE: new Set(['US-DE', 'US-NY', 'US-TX', 'US-FL', 'US-CO', 'US-WA', 'US-IL', 'US-GA']),
 }));
 
 vi.mock('../../ingest/sources/edgar.js', () => ({
@@ -94,11 +98,31 @@ const CH_FILINGS = [{
   source: 'COMPANIES_HOUSE' as const,
 }];
 
+// High-confidence SOS stub returned by default so existing tests that use US-DE
+// (a SOS_PORTAL_LIVE jurisdiction) still pass the new entity-verification gate.
+const SOS_CONFIRMED_STUB = {
+  entity_id: 'corpsig_us_de_apple_inc',
+  canonical_name: 'APPLE INC.',
+  jurisdiction: 'US-DE',
+  status: 'active' as const,
+  incorporated_at: null,
+  registered_agent: null,
+  officers: [],
+  source: 'delaware_sos',
+  source_url: null,
+  freshness_secs: 0,
+  confidence: 1.0,
+  data_freshness: 'fresh' as const,
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetCached.mockResolvedValue(null);
   mockSetCache.mockResolvedValue(undefined);
   mockResolveEntityFromCache.mockResolvedValue(null);
+  // Default: SOS confirms entity — gate passes for all existing tests.
+  // Override to { confidence: 0 } in tests that validate gate-blocking behaviour.
+  mockResolveEntityUpstream.mockResolvedValue(SOS_CONFIRMED_STUB);
   mockResolveEDGAREntity.mockResolvedValue(null);
   mockFetchEDGARSubmissions.mockResolvedValue(null);
   mockFetchCHFilings.mockResolvedValue({ filings: [], totalAvailable: 0 });
@@ -208,6 +232,65 @@ describe('filings_fetch — SEDAR path (CA)', () => {
 
     const resp = await server.callTool({ entity_name: 'Private Co Canada', jurisdiction: 'CA' }) as { isError?: boolean };
     expect(resp.isError).toBe(true);
+  });
+});
+
+describe('filings_fetch — SOS_PORTAL_LIVE gate', () => {
+  it('returns ENTITY_NOT_FOUND for Apple Inc / US-DE when SOS has no record', async () => {
+    // SOS (ICIS) returns confidence 0 — Apple is not registered in Delaware
+    mockResolveEntityUpstream.mockResolvedValue({ confidence: 0 });
+    const server = makeServer();
+    registerFilingsFetch(server as never);
+
+    const resp = await server.callTool({ entity_name: 'Apple Inc', jurisdiction: 'US-DE' }) as { isError?: boolean };
+    expect(resp.isError).toBe(true);
+    expect(mockResolveEDGAREntity).not.toHaveBeenCalled();
+  });
+
+  it('returns ENTITY_NOT_FOUND for Tesla Inc / US-DE when SOS has no record', async () => {
+    mockResolveEntityUpstream.mockResolvedValue({ confidence: 0 });
+    const server = makeServer();
+    registerFilingsFetch(server as never);
+
+    const resp = await server.callTool({ entity_name: 'Tesla Inc', jurisdiction: 'US-DE' }) as { isError?: boolean };
+    expect(resp.isError).toBe(true);
+    expect(mockResolveEDGAREntity).not.toHaveBeenCalled();
+  });
+
+  it('allows EDGAR filings when SOS confirms entity in US-DE', async () => {
+    // Gate passes (default SOS_CONFIRMED_STUB has confidence 1.0)
+    mockResolveEDGAREntity.mockResolvedValue(EDGAR_ENTITY);
+    mockFetchEDGARSubmissions.mockResolvedValue(EDGAR_SUBMISSIONS);
+    const server = makeServer();
+    registerFilingsFetch(server as never);
+
+    const resp = await server.callTool({ entity_name: 'Stripe Holdings LLC', jurisdiction: 'US-DE' }) as { structuredContent: FilingsFetchOutputType };
+    expect(resp.structuredContent.source).toBe('edgar');
+    expect(resp.structuredContent.filings.length).toBeGreaterThan(0);
+  });
+
+  it('skips the SOS gate for non-SOS_PORTAL_LIVE states and falls through to EDGAR', async () => {
+    // US-NV is not in SOS_PORTAL_LIVE — gate must not run, EDGAR is the authoritative source
+    mockResolveEDGAREntity.mockResolvedValue(EDGAR_ENTITY);
+    mockFetchEDGARSubmissions.mockResolvedValue(EDGAR_SUBMISSIONS);
+    const server = makeServer();
+    registerFilingsFetch(server as never);
+
+    const resp = await server.callTool({ entity_name: 'Some Corp', jurisdiction: 'US-NV' }) as { structuredContent: FilingsFetchOutputType };
+    expect(mockResolveEntityUpstream).not.toHaveBeenCalled();
+    expect(resp.structuredContent.source).toBe('edgar');
+  });
+
+  it('uses cached entity data and skips resolveEntityUpstream when cache is warm', async () => {
+    // If resolveEntityFromCache returns a confirmed entity, upstream is never called
+    mockResolveEntityFromCache.mockResolvedValue(SOS_CONFIRMED_STUB);
+    mockResolveEDGAREntity.mockResolvedValue(EDGAR_ENTITY);
+    mockFetchEDGARSubmissions.mockResolvedValue(EDGAR_SUBMISSIONS);
+    const server = makeServer();
+    registerFilingsFetch(server as never);
+
+    await server.callTool({ entity_name: 'Stripe Holdings LLC', jurisdiction: 'US-DE' });
+    expect(mockResolveEntityUpstream).not.toHaveBeenCalled();
   });
 });
 

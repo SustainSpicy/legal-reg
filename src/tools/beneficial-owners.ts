@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { BeneficialOwnersInput, BeneficialOwnersSuccessSchema } from '../schemas/beneficial-owners.js';
 import { getCached, setCache, beneficialOwnersCacheKey } from '../cache/helpers.js';
-import { generateEntityId, MIN_ENTITY_CONFIDENCE } from '../resolvers/entity-resolver.js';
+import { generateEntityId, resolveEntityFromCache, resolveEntityUpstream, MIN_ENTITY_CONFIDENCE, SOS_PORTAL_LIVE } from '../resolvers/entity-resolver.js';
 import { structuredError } from '../errors/codes.js';
 import { logger } from '../logger.js';
 import { resolveCompanyNumber } from '../ingest/sources/companies-house-filings.js';
@@ -279,6 +279,22 @@ export function registerBeneficialOwners(server: McpServer): void {
         source = 'UK_PSC';
         disclosureStatus = owners.length > 0 ? 'full' : 'unavailable';
       } else if (resolvedJurisdiction.startsWith('US') || resolvedJurisdiction === 'CA' || resolvedJurisdiction.startsWith('CA-') || resolvedJurisdiction === 'global') {
+        // SOS_PORTAL_LIVE gate: for states with a live SOS portal, entity_name must be
+        // confirmed by the SOS before GLEIF/EDGAR ownership data is returned stamped with
+        // a SOS-jurisdiction entity_id. Without this, beneficial_owners("Apple Inc", "US-DE")
+        // would mint corpsig_us_de_apple even though Apple is not registered in Delaware.
+        if (entity_name && !entity_id && SOS_PORTAL_LIVE.has(resolvedJurisdiction)) {
+          const cachedEntity = await resolveEntityFromCache(entity_name, resolvedJurisdiction);
+          const sosCheck = cachedEntity ?? await resolveEntityUpstream(entity_name, resolvedJurisdiction);
+          if (sosCheck.confidence < MIN_ENTITY_CONFIDENCE) {
+            return structuredError(
+              'ENTITY_NOT_FOUND',
+              `No entity found for '${entity_name}' in ${resolvedJurisdiction}. ` +
+              `This entity may be registered in a different jurisdiction.`,
+            );
+          }
+        }
+
         const lookupName = entity_name ?? canonicalId;
         // Primary: GLEIF LEI (structural parent relationships, global coverage)
         const gleif = await fetchGLEIFOwners(lookupName);

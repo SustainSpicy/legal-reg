@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mockGetCached = vi.hoisted(() => vi.fn());
 const mockSetCache = vi.hoisted(() => vi.fn());
+const mockResolveEntityFromCache = vi.hoisted(() => vi.fn());
+const mockResolveEntityUpstream = vi.hoisted(() => vi.fn());
 const mockResolveCompanyNumber = vi.hoisted(() => vi.fn());
 
 vi.mock('../../cache/helpers.js', () => ({
@@ -13,6 +15,10 @@ vi.mock('../../cache/helpers.js', () => ({
 vi.mock('../../resolvers/entity-resolver.js', () => ({
   generateEntityId: (_jur: string, name: string) =>
     `corpsig_test_${name.toLowerCase().replace(/\s+/g, '_')}`,
+  resolveEntityFromCache: mockResolveEntityFromCache,
+  resolveEntityUpstream: mockResolveEntityUpstream,
+  MIN_ENTITY_CONFIDENCE: 0.7,
+  SOS_PORTAL_LIVE: new Set(['US-DE', 'US-NY', 'US-TX', 'US-FL', 'US-CO', 'US-WA', 'US-IL', 'US-GA']),
 }));
 
 vi.mock('../../ingest/sources/companies-house-filings.js', () => ({
@@ -77,10 +83,29 @@ const PSC_RESPONSE = {
   }],
 };
 
+// High-confidence SOS stub so existing tests that pass US-DE (a SOS_PORTAL_LIVE
+// jurisdiction) still clear the new entity-verification gate by default.
+const SOS_CONFIRMED_STUB = {
+  entity_id: 'corpsig_us_de_apple_inc',
+  canonical_name: 'APPLE INC.',
+  jurisdiction: 'US-DE',
+  status: 'active' as const,
+  incorporated_at: null,
+  registered_agent: null,
+  officers: [],
+  source: 'delaware_sos',
+  source_url: null,
+  freshness_secs: 0,
+  confidence: 1.0,
+  data_freshness: 'fresh' as const,
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetCached.mockResolvedValue(null);
   mockSetCache.mockResolvedValue(undefined);
+  mockResolveEntityFromCache.mockResolvedValue(null);
+  mockResolveEntityUpstream.mockResolvedValue(SOS_CONFIRMED_STUB);
   mockResolveCompanyNumber.mockResolvedValue(null);
 });
 
@@ -206,5 +231,53 @@ describe('beneficial_owners — unsupported jurisdiction', () => {
 
     const resp = await server.callTool({ entity_name: 'Firma GmbH', jurisdiction: 'DE' }) as { isError?: boolean };
     expect(resp.isError).toBe(true);
+  });
+});
+
+describe('beneficial_owners — SOS_PORTAL_LIVE gate', () => {
+  it('returns ENTITY_NOT_FOUND for Apple Inc / US-DE when SOS has no record', async () => {
+    mockResolveEntityUpstream.mockResolvedValue({ confidence: 0 });
+    vi.stubGlobal('fetch', vi.fn()); // should never be called
+    const server = makeServer();
+    registerBeneficialOwners(server as never);
+
+    const resp = await server.callTool({ entity_name: 'Apple Inc', jurisdiction: 'US-DE' }) as { isError?: boolean };
+    expect(resp.isError).toBe(true);
+  });
+
+  it('returns ENTITY_NOT_FOUND for Tesla Inc / US-DE when SOS has no record', async () => {
+    mockResolveEntityUpstream.mockResolvedValue({ confidence: 0 });
+    vi.stubGlobal('fetch', vi.fn());
+    const server = makeServer();
+    registerBeneficialOwners(server as never);
+
+    const resp = await server.callTool({ entity_name: 'Tesla Inc', jurisdiction: 'US-DE' }) as { isError?: boolean };
+    expect(resp.isError).toBe(true);
+  });
+
+  it('skips the SOS gate for non-SOS_PORTAL_LIVE states (US-NV)', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(mockResponse({ data: [] }))             // GLEIF — empty
+      .mockResolvedValueOnce(mockResponse({ hits: { hits: [] } })),  // EDGAR — empty
+    );
+    const server = makeServer();
+    registerBeneficialOwners(server as never);
+
+    // US-NV is not in SOS_PORTAL_LIVE — gate must not run
+    await server.callTool({ entity_name: 'Some Corp', jurisdiction: 'US-NV' });
+    expect(mockResolveEntityUpstream).not.toHaveBeenCalled();
+  });
+
+  it('uses cached SOS entity and skips resolveEntityUpstream when entity cache is warm', async () => {
+    mockResolveEntityFromCache.mockResolvedValue(SOS_CONFIRMED_STUB);
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(mockResponse({ data: [] }))
+      .mockResolvedValueOnce(mockResponse({ hits: { hits: [] } })),
+    );
+    const server = makeServer();
+    registerBeneficialOwners(server as never);
+
+    await server.callTool({ entity_name: 'Stripe Holdings LLC', jurisdiction: 'US-DE' });
+    expect(mockResolveEntityUpstream).not.toHaveBeenCalled();
   });
 });
