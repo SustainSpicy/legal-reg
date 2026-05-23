@@ -345,3 +345,50 @@ describe('filings_fetch — cache', () => {
     expect(resp.structuredContent.filings[0]!.type).toBe('10-K');
   });
 });
+
+describe('filings_fetch — entity_id-only path uses cached canonical_name for EDGAR', () => {
+  it('resolves EDGAR using canonical_name from entity_lookup cache when called with entity_id only', async () => {
+    const cachedEntity = {
+      ...SOS_CONFIRMED_STUB,
+      entity_id: 'corpsig_us_de_microsoft_corporation',
+      canonical_name: 'MICROSOFT CORPORATION',
+      jurisdiction: 'US-DE',
+      confidence: 1.0,
+    };
+    // entity:id cache hit (written by entity_lookup)
+    mockGetCached.mockImplementation((key: string) => {
+      if (key === 'entity:id:corpsig_us_de_microsoft_corporation') return Promise.resolve(cachedEntity);
+      return Promise.resolve(null);
+    });
+    mockResolveEDGAREntity.mockResolvedValue(EDGAR_ENTITY);
+    mockFetchEDGARSubmissions.mockResolvedValue(EDGAR_SUBMISSIONS);
+    const server = makeServer();
+    registerFilingsFetch(server as never);
+
+    const resp = await server.callTool({
+      entity_id: 'corpsig_us_de_microsoft_corporation',
+      jurisdiction: 'US-DE',
+    }) as { structuredContent: FilingsFetchOutputType };
+
+    // canonical_name from cache, not the raw entity_id string
+    expect(resp.structuredContent.canonical_name).toBe('MICROSOFT CORPORATION');
+    // EDGAR was called with the SOS-confirmed name, not undefined
+    expect(mockResolveEDGAREntity).toHaveBeenCalledWith('MICROSOFT CORPORATION');
+    expect(resp.structuredContent.source).toBe('edgar');
+    expect(resp.structuredContent.filings.length).toBeGreaterThan(0);
+  });
+
+  it('returns ENTITY_NOT_RESOLVED when entity_id cache has no entry', async () => {
+    mockGetCached.mockResolvedValue(null);
+    const server = makeServer();
+    registerFilingsFetch(server as never);
+
+    const resp = await server.callTool({
+      entity_id: 'corpsig_us_de_ghost_corp',
+      jurisdiction: 'US-DE',
+    }) as { isError?: boolean };
+
+    expect(resp.isError).toBe(true);
+    expect(mockResolveEDGAREntity).not.toHaveBeenCalled();
+  });
+});

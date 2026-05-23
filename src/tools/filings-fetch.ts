@@ -129,11 +129,14 @@ export function registerFilingsFetch(server: McpServer): void {
       // When entity_id is provided without entity_name, verify the entity was actually
       // resolved by entity_lookup before fetching filings. A confidence-0 stub means
       // entity_lookup found nothing; we must refuse rather than return Apple/Amazon filings.
+      // resolvedById is kept alive so downstream code can use canonical_name for EDGAR lookup
+      // instead of falling back to an empty entity_name (which returns no filings).
+      let resolvedById: import('../schemas/entity.js').EntityLookupOutputType | null = null;
       if (entity_id && !entity_name) {
-        const knownEntity = await getCached<import('../schemas/entity.js').EntityLookupOutputType>(
+        resolvedById = await getCached<import('../schemas/entity.js').EntityLookupOutputType>(
           `entity:id:${canonicalId}`,
         );
-        if (!knownEntity || knownEntity.confidence < MIN_ENTITY_CONFIDENCE || knownEntity.status === 'unknown') {
+        if (!resolvedById || resolvedById.confidence < MIN_ENTITY_CONFIDENCE || resolvedById.status === 'unknown') {
           return structuredError(
             'ENTITY_NOT_RESOLVED',
             `Entity '${canonicalId}' is not resolved — ` +
@@ -158,7 +161,7 @@ export function registerFilingsFetch(server: McpServer): void {
 
       let entityData = entity_name
         ? await resolveEntityFromCache(entity_name, resolvedJurisdiction)
-        : null;
+        : resolvedById;
 
       let filings: FilingItemType[] = [];
       let source = 'unknown';
@@ -209,8 +212,10 @@ export function registerFilingsFetch(server: McpServer): void {
           entityData = sosCheck;
         }
 
-        // EDGAR for US public companies — requires entity_name for live lookup
-        const edgarEntity = entity_name ? await resolveEDGAREntity(entity_name) : null;
+        // EDGAR for US public companies — use entity_name if provided, otherwise fall back
+        // to the canonical_name resolved from the entity_id cache (populated by entity_lookup).
+        const lookupName = entity_name ?? resolvedById?.canonical_name;
+        const edgarEntity = lookupName ? await resolveEDGAREntity(lookupName) : null;
         if (edgarEntity) {
           const cikMatch = edgarEntity.source_url?.match(/CIK=(\d+)/);
           const cik = cikMatch?.[1];

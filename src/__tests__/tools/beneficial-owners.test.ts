@@ -281,3 +281,50 @@ describe('beneficial_owners — SOS_PORTAL_LIVE gate', () => {
     expect(mockResolveEntityUpstream).not.toHaveBeenCalled();
   });
 });
+
+describe('beneficial_owners — entity_id-only path uses cached canonical_name for GLEIF/EDGAR', () => {
+  it('uses canonical_name from entity_lookup cache as GLEIF lookup name when called with entity_id only', async () => {
+    const cachedEntity = {
+      ...SOS_CONFIRMED_STUB,
+      entity_id: 'corpsig_us_de_microsoft_corporation',
+      canonical_name: 'MICROSOFT CORPORATION',
+      jurisdiction: 'US-DE',
+      confidence: 1.0,
+    };
+    mockGetCached.mockImplementation((key: string) => {
+      if (key === 'entity:id:corpsig_us_de_microsoft_corporation') return Promise.resolve(cachedEntity);
+      return Promise.resolve(null);
+    });
+
+    const gleifSearchSpy = vi.fn()
+      .mockResolvedValueOnce(mockResponse({ data: [] }))            // GLEIF search — empty
+      .mockResolvedValueOnce(mockResponse({ hits: { hits: [] } })); // EDGAR fallback — empty
+    vi.stubGlobal('fetch', gleifSearchSpy);
+
+    const server = makeServer();
+    registerBeneficialOwners(server as never);
+
+    const resp = await server.callTool({
+      entity_id: 'corpsig_us_de_microsoft_corporation',
+      jurisdiction: 'US-DE',
+    }) as { structuredContent: import('../../schemas/beneficial-owners.js').BeneficialOwnersOutputType };
+
+    // GLEIF was called with the real company name, not the corpsig ID string
+    const gleifCallUrl: string = gleifSearchSpy.mock.calls[0]?.[0] ?? '';
+    expect(gleifCallUrl).toContain('MICROSOFT%20CORPORATION');
+    expect(resp.structuredContent.disclosure_status).toBe('unavailable'); // no data in stubs, but call was made correctly
+  });
+
+  it('returns ENTITY_NOT_RESOLVED when entity_id has no cache entry', async () => {
+    mockGetCached.mockResolvedValue(null);
+    const server = makeServer();
+    registerBeneficialOwners(server as never);
+
+    const resp = await server.callTool({
+      entity_id: 'corpsig_us_de_ghost_corp',
+      jurisdiction: 'US-DE',
+    }) as { isError?: boolean };
+
+    expect(resp.isError).toBe(true);
+  });
+});

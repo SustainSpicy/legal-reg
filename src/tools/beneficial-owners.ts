@@ -239,12 +239,15 @@ export function registerBeneficialOwners(server: McpServer): void {
       const resolvedJurisdiction = jurisdiction ?? 'US-DE';
       const canonicalId = entity_id ?? generateEntityId(resolvedJurisdiction, entity_name!);
 
-      // Guard: refuse to operate on an unresolved entity_id
+      // Guard: refuse to operate on an unresolved entity_id.
+      // resolvedById is kept alive so the canonical_name can be used as the GLEIF/EDGAR
+      // lookup name instead of falling back to the corpsig ID string (which finds nothing).
+      let resolvedById: import('../schemas/entity.js').EntityLookupOutputType | null = null;
       if (entity_id && !entity_name) {
-        const knownEntity = await getCached<import('../schemas/entity.js').EntityLookupOutputType>(
+        resolvedById = await getCached<import('../schemas/entity.js').EntityLookupOutputType>(
           `entity:id:${canonicalId}`,
         );
-        if (!knownEntity || knownEntity.confidence < MIN_ENTITY_CONFIDENCE || knownEntity.status === 'unknown') {
+        if (!resolvedById || resolvedById.confidence < MIN_ENTITY_CONFIDENCE || resolvedById.status === 'unknown') {
           return structuredError(
             'ENTITY_NOT_RESOLVED',
             `Entity '${canonicalId}' is not resolved — ` +
@@ -295,7 +298,7 @@ export function registerBeneficialOwners(server: McpServer): void {
           }
         }
 
-        const lookupName = entity_name ?? canonicalId;
+        const lookupName = entity_name ?? resolvedById?.canonical_name ?? canonicalId;
         // Primary: GLEIF LEI (structural parent relationships, global coverage)
         const gleif = await fetchGLEIFOwners(lookupName);
         if (gleif.owners.length > 0) {
