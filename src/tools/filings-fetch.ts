@@ -159,7 +159,6 @@ export function registerFilingsFetch(server: McpServer): void {
       let entityData = entity_name
         ? await resolveEntityFromCache(entity_name, resolvedJurisdiction)
         : null;
-      const canonicalName = entityData?.canonical_name ?? entity_name ?? canonicalId;
 
       let filings: FilingItemType[] = [];
       let source = 'unknown';
@@ -256,7 +255,7 @@ export function registerFilingsFetch(server: McpServer): void {
 
       const result: FilingsFetchOutputType = {
         entity_id: canonicalId,
-        canonical_name: canonicalName,
+        canonical_name: entityData?.canonical_name ?? entity_name ?? canonicalId,
         jurisdiction: resolvedJurisdiction,
         filings,
         financials,
