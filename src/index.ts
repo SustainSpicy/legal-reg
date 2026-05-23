@@ -106,33 +106,6 @@ async function main(): Promise<void> {
     }),
   );
 
-  // ---- Temporary admin cache flush (remove after use) -----------------------
-  app.get('/admin/flush-stale', async (req, res) => {
-    if (req.query['secret'] !== 'cs-flush-2026') {
-      res.status(403).json({ error: 'forbidden' });
-      return;
-    }
-    if (!isRedisConnected()) {
-      res.status(503).json({ error: 'redis not connected' });
-      return;
-    }
-    const STALE_KEYS = [
-      'filings:corpsig_us_de_apple',
-      'filings:corpsig_us_de_apple:fin',
-      'filings:corpsig_us_de_tesla',
-      'filings:corpsig_us_de_tesla:fin',
-      'bowners:corpsig_us_de_apple',
-      'bowners:corpsig_us_de_tesla',
-    ];
-    const deleted: string[] = [];
-    for (const key of STALE_KEYS) {
-      const n = await redis.del(key);
-      if (n > 0) deleted.push(key);
-    }
-    logger.info({ deleted }, 'Admin: flushed stale cache keys');
-    res.json({ flushed: deleted, total: deleted.length });
-  });
-
   // ---- Health check ----------------------------------------------------------
   // Returns 200 / 503 based on Redis connectivity and sanctions list presence.
   // Render and uptime monitors use this to decide whether to route traffic.
